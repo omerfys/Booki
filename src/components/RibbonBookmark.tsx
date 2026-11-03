@@ -34,12 +34,20 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
   const [newLabel, setNewLabel] = useState('');
   const [selectedColor, setSelectedColor] = useState(RIBBON_COLORS[0].hex);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragHeight, setDragHeight] = useState<number | null>(null);
-  const [dragTilt, setDragTilt] = useState(0);
+  const [dragTip, setDragTip] = useState<{ x: number; y: number } | null>(null);
   const [animateSlide, setAnimateSlide] = useState(false);
 
   const prevPageRef = useRef(currentPage);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Check if current spread has a bookmark placed on it
+  const activeBookmark = bookmarks.find(
+    b => b.pageNumber === currentPage || b.pageNumber === currentPage + 1
+  );
+  const isPlaced = !!activeBookmark;
+
+  const totalHeight = bookHeight + 48;
+  const restingHeight = 26; // Tucked above the spine when not placed
 
   // When navigating between pages: do NOT animate slide-down! It must already be there ("hep ordaymış gibi")
   useEffect(() => {
@@ -48,22 +56,11 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
       prevPageRef.current = currentPage;
     }
   }, [currentPage]);
-  // Check if current spread has a bookmark placed on it
-  const activeBookmark = bookmarks.find(
-    b => b.pageNumber === currentPage || b.pageNumber === currentPage + 1
-  );
 
-  const isPlaced = !!activeBookmark;
-
-  // Always Crimson Red per user requirement - zero orange
-  const colorMeta = { name: 'Crimson Red', hex: '#991b1b', light: '#dc2626' };
-
-  const totalHeight = bookHeight + 48;
-  const restingHeight = 26; // Tucked above the spine when not placed
-
-  // Current visual height of the draped ribbon
-  const currentVisualHeight = isDragging && dragHeight !== null
-    ? dragHeight
+  // Current visual coordinates of the ribbon tip (center is X = 120 in 240px canvas)
+  const currentTipX = isDragging && dragTip !== null ? dragTip.x : 120;
+  const currentTipY = isDragging && dragTip !== null 
+    ? dragTip.y 
     : (isPlaced ? totalHeight : restingHeight);
 
   // Interactive Click to Toggle Ribbon Placement on Current Page
@@ -77,7 +74,7 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
     }
   }, [isPlaced, activeBookmark, currentPage, onAddBookmark, onRemoveBookmark]);
 
-  // Interactive Physical Drag-and-Drop: grab ribbon from top or tail, pull down to place, pull up to remove
+  // Interactive Physical Drag-and-Drop: grab ribbon from top loop or tail, pull down to place, pull up to remove
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -86,34 +83,46 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
     setIsDragging(true);
     setAnimateSlide(false);
 
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const initialHeight = currentVisualHeight;
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const initialTipX = currentTipX;
+    const initialTipY = currentTipY;
+
+    let hasMoved = false;
 
     const onPointerMove = (moveEv: PointerEvent) => {
-      const deltaX = moveEv.clientX - startX;
-      const deltaY = moveEv.clientY - startY;
-      const targetH = Math.max(restingHeight, Math.min(totalHeight + 20, initialHeight + deltaY));
-      const targetTilt = Math.max(-12, Math.min(12, deltaX * 0.15));
+      const deltaX = moveEv.clientX - startClientX;
+      const deltaY = moveEv.clientY - startClientY;
 
-      setDragHeight(targetH);
-      setDragTilt(targetTilt);
+      if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+        hasMoved = true;
+      }
+
+      // Sola çekince SOLA (deltaX < 0 -> tipX < 120), sağa çekince SAĞA (deltaX > 0 -> tipX > 120)
+      const targetX = Math.max(40, Math.min(200, initialTipX + deltaX));
+      const targetY = Math.max(restingHeight, Math.min(totalHeight + 35, initialTipY + deltaY));
+
+      setDragTip({ x: targetX, y: targetY });
     };
 
     const onPointerUp = (upEv: PointerEvent) => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
 
-      const finalDeltaY = upEv.clientY - startY;
-      const finalHeight = initialHeight + finalDeltaY;
-
       setIsDragging(false);
-      setDragHeight(null);
-      setDragTilt(0);
+      setDragTip(null);
       setAnimateSlide(true);
 
+      if (!hasMoved) {
+        handleToggleRibbon();
+        return;
+      }
+
+      const finalDeltaY = upEv.clientY - startClientY;
+      const finalY = initialTipY + finalDeltaY;
+
       // Threshold: if dragged more than 38% down, place ribbon; else remove / tuck
-      if (finalHeight > totalHeight * 0.38) {
+      if (finalY > totalHeight * 0.38) {
         if (!isPlaced) {
           sound.playRibbonSlide();
           onAddBookmark(currentPage, `Page ${currentPage}`, '#991b1b');
@@ -133,106 +142,106 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
   return (
     <>
       {/* ======================================================== */}
-      {/* 1. PHYSICAL 3D SATIN RIBBON WITH ANIMATED DRAPE & PULL   */}
+      {/* 1. PHYSICAL 3D SATIN RIBBON WITH BEZIER DRAPE & PULL     */}
       {/* ======================================================== */}
-      <div 
-        ref={containerRef}
-        onClick={handleToggleRibbon}
-        onPointerDown={handlePointerDown}
-        className={`absolute top-[-26px] left-1/2 transform -translate-x-1/2 z-4 select-none cursor-pointer group ${
-          isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:brightness-110'
-        }`}
-        style={{ width: '38px' }}
-        title={isPlaced ? 'Ayracı kaldırmak için tıklayın veya yukarı çekin' : 'Ayracı sayfaya yerleştirmek için aşağı çekin veya tıklayın'}
-      >
-        {/* Animated height container with Physics tilt and zero-delay on page navigation */}
-        <div
-          className={`relative overflow-hidden origin-top ${
-            isDragging
-              ? 'transition-none'
-              : animateSlide
-              ? 'transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
-              : 'transition-none'
-          }`}
-          style={{
-            height: `${currentVisualHeight}px`,
-            width: '38px',
-            transform: `rotate(${dragTilt}deg)`
-          }}
-        >
-          <svg
-            width="38"
-            height={Math.max(restingHeight + 10, currentVisualHeight)}
-            viewBox={`0 0 38 ${Math.max(restingHeight + 10, currentVisualHeight)}`}
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="filter drop-shadow-md"
+      {(() => {
+        const anchorX = 120;
+        const anchorY = 10;
+        const hw = 10; // 20px ribbon width
+        const svgWidth = 240;
+        const svgHeight = totalHeight + 40;
+
+        // Tangent control points for flexible hanging cloth
+        const cp1X = anchorX;
+        const cp1Y = anchorY + (currentTipY - anchorY) * 0.35;
+
+        const cp2X = anchorX + (currentTipX - anchorX) * 0.75;
+        const cp2Y = anchorY + (currentTipY - anchorY) * 0.72;
+
+        const isRestingTucked = currentTipY <= restingHeight + 4;
+
+        const ribbonPath = isRestingTucked
+          ? `M ${anchorX - 8} ${anchorY} L ${anchorX - 4} 26 L ${anchorX} 20 L ${anchorX + 4} 26 L ${anchorX + 8} ${anchorY} Z`
+          : `
+            M ${anchorX - hw} ${anchorY}
+            C ${cp1X - hw} ${cp1Y}, ${cp2X - hw} ${cp2Y}, ${currentTipX - hw} ${currentTipY}
+            L ${currentTipX} ${Math.max(anchorY + 10, currentTipY - 14)}
+            L ${currentTipX + hw} ${currentTipY}
+            C ${cp2X + hw} ${cp2Y}, ${cp1X + hw} ${cp1Y}, ${anchorX + hw} ${anchorY}
+            Z
+          `;
+
+        return (
+          <div 
+            ref={containerRef}
+            className="absolute top-[-26px] left-1/2 transform -translate-x-1/2 z-4 select-none pointer-events-none"
+            style={{ width: `${svgWidth}px`, height: `${svgHeight}px` }}
           >
-            <defs>
-              <linearGradient id="ribbonGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor={colorMeta.hex} />
-                <stop offset="35%" stopColor={colorMeta.light} />
-                <stop offset="65%" stopColor={colorMeta.light} />
-                <stop offset="100%" stopColor={colorMeta.hex} />
-              </linearGradient>
-              <linearGradient id="ribbonShade" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="rgba(0,0,0,0.45)" />
-                <stop offset="12%" stopColor="rgba(0,0,0,0.0)" />
-                <stop offset="85%" stopColor="rgba(0,0,0,0.0)" />
-                <stop offset="100%" stopColor="rgba(0,0,0,0.35)" />
-              </linearGradient>
-            </defs>
+            <svg
+              width={svgWidth}
+              height={svgHeight}
+              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="overflow-visible filter drop-shadow-md"
+            >
+              <defs>
+                <linearGradient id="ribbonGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#801515" />
+                  <stop offset="30%" stopColor="#dc2626" />
+                  <stop offset="60%" stopColor="#ef4444" />
+                  <stop offset="100%" stopColor="#991b1b" />
+                </linearGradient>
+                <linearGradient id="ribbonShade" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="rgba(0,0,0,0.5)" />
+                  <stop offset="12%" stopColor="rgba(0,0,0,0.0)" />
+                  <stop offset="85%" stopColor="rgba(0,0,0,0.0)" />
+                  <stop offset="100%" stopColor="rgba(0,0,0,0.4)" />
+                </linearGradient>
+              </defs>
 
-            {/* Upper anchor tuck into book spine */}
-            <path
-              d="M 6 0 L 32 0 L 30 18 L 8 18 Z"
-              fill="rgba(0,0,0,0.55)"
-            />
-
-            {/* Draped ribbon body with dynamic swallowtail tip always at fingertips */}
-            {currentVisualHeight <= restingHeight + 4 ? (
-              // Resting folded tab when not placed
+              {/* Upper anchor tuck into book spine */}
               <path
-                d="M 8 12 L 14 26 L 25 20 L 32 26 L 30 12 Z"
-                fill="url(#ribbonGrad)"
+                d={`M ${anchorX - 14} 0 L ${anchorX + 14} 0 L ${anchorX + 12} 16 L ${anchorX - 12} 16 Z`}
+                fill="rgba(0,0,0,0.6)"
+                className="pointer-events-none"
               />
-            ) : (
-              // Extended ribbon body with dynamic swallowtail tip at currentVisualHeight
-              <>
-                <path
-                  d={`
-                    M 8 12
-                    C 12 ${currentVisualHeight * 0.28}, 25 ${currentVisualHeight * 0.65}, 15 ${Math.max(12, currentVisualHeight - 28)}
-                    L 15 ${currentVisualHeight}
-                    L 25 ${Math.max(12, currentVisualHeight - 14)}
-                    L 34 ${currentVisualHeight}
-                    L 34 ${Math.max(12, currentVisualHeight - 28)}
-                    C 43 ${currentVisualHeight * 0.65}, 30 ${currentVisualHeight * 0.28}, 30 12
-                    Z
-                  `}
-                  fill="url(#ribbonGrad)"
-                />
-                {/* Satin sheen texture overlay */}
-                <path
-                  d={`
-                    M 8 12
-                    C 12 ${currentVisualHeight * 0.28}, 25 ${currentVisualHeight * 0.65}, 15 ${Math.max(12, currentVisualHeight - 28)}
-                    L 15 ${currentVisualHeight}
-                    L 25 ${Math.max(12, currentVisualHeight - 14)}
-                    L 34 ${currentVisualHeight}
-                    L 34 ${Math.max(12, currentVisualHeight - 28)}
-                    C 43 ${currentVisualHeight * 0.65}, 30 ${currentVisualHeight * 0.28}, 30 12
-                    Z
-                  `}
-                  fill="url(#ribbonShade)"
-                  opacity="0.6"
-                />
-              </>
-            )}
-          </svg>
-        </div>
 
-      </div>
+              {/* Transparent expanded hit-area for effortless mouse grab */}
+              <path
+                d={ribbonPath}
+                strokeWidth="32"
+                stroke="transparent"
+                fill="none"
+                onPointerDown={handlePointerDown}
+                className={`pointer-events-auto ${
+                  isDragging ? 'cursor-grabbing' : 'cursor-grab hover:brightness-110'
+                }`}
+              >
+                <title>{isPlaced ? 'Ayracı kaldırmak için yukarı çekin veya tıklayın' : 'Ayracı sayfaya yerleştirmek için aşağı çekin veya tıklayın'}</title>
+              </path>
+
+              {/* Satin ribbon body with dynamic Bézier curvature */}
+              <path
+                d={ribbonPath}
+                fill="url(#ribbonGrad)"
+                onPointerDown={handlePointerDown}
+                className={`pointer-events-auto transition-all ${
+                  animateSlide ? 'duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]' : 'duration-0'
+                } ${isDragging ? 'cursor-grabbing' : 'cursor-grab hover:brightness-110'}`}
+              />
+
+              {/* Satin sheen overlay */}
+              <path
+                d={ribbonPath}
+                fill="url(#ribbonShade)"
+                opacity="0.5"
+                className="pointer-events-none"
+              />
+            </svg>
+          </div>
+        );
+      })()}
 
 
       {/* ======================================================== */}
