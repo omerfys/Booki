@@ -32,13 +32,16 @@ export default function App() {
   const saveTimerRef = useRef<number | null>(null);
   const currentBook = books.find(b => b.id === activeBookId) || books[0];
   const activeCharacter = getCharacterById(currentBook?.activeCharacterId || CHARACTERS[0].id);
+  const [isOpeningTransition, setIsOpeningTransition] = useState(false);
+
+  const isVisuallyClosed = currentBook?.isClosed && !isOpeningTransition;
 
   const [scale, setScale] = useState(1);
   useEffect(() => {
     const updateScale = () => {
       const availWidth = window.innerWidth - 32;
       const availHeight = window.innerHeight - 130;
-      const assemblyWidth = currentBook?.isClosed ? 680 : 1240;
+      const assemblyWidth = isVisuallyClosed ? 720 : 1240;
       const scaleX = availWidth / assemblyWidth;
       const scaleY = availHeight / 720;
       const target = Math.min(1.0, Math.max(0.42, Math.min(scaleX, scaleY)));
@@ -47,7 +50,7 @@ export default function App() {
     updateScale();
     window.addEventListener('resize', updateScale);
     return () => window.removeEventListener('resize', updateScale);
-  }, [currentBook?.isClosed]);
+  }, [isVisuallyClosed]);
   // Load books from IndexedDB on startup
   useEffect(() => {
     async function init() {
@@ -343,9 +346,9 @@ export default function App() {
             />
           </div>
 
-          {/* Center Stage: Interactive 3D Hardcover Book (Width animates smoothly between 420px and 960px) */}
+          {/* Center Stage: Interactive 3D Hardcover Book (Width animates symmetrically from center) */}
           <div className={`transition-all duration-900 ease-[cubic-bezier(0.22,1,0.36,1)] flex items-center justify-center shrink-0 ${
-            currentBook.isClosed ? 'w-[420px]' : 'w-[960px]'
+            isVisuallyClosed ? 'w-[480px]' : 'w-[960px]'
           }`}>
             <BookEngine
               key={currentBook.id}
@@ -356,6 +359,9 @@ export default function App() {
               penThickness={activeThickness}
               writingSpeed={activeWritingSpeed}
               fontSize={activeSize}
+              isOpening={isOpeningTransition}
+              onStartOpening={() => setIsOpeningTransition(true)}
+              onFinishOpening={() => setIsOpeningTransition(false)}
               onUpdateBook={handleUpdateBook}
             />
           </div>

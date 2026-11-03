@@ -16,6 +16,9 @@ interface BookEngineProps {
   penThickness: number;
   writingSpeed: number;
   fontSize: number;
+  isOpening?: boolean;
+  onStartOpening?: () => void;
+  onFinishOpening?: () => void;
   onUpdateBook: (updated: Partial<Book>) => void;
   onPageChange?: (newPage: number) => void;
 }
@@ -31,6 +34,9 @@ export const BookEngine: React.FC<BookEngineProps> = ({
   penThickness,
   writingSpeed,
   fontSize,
+  isOpening = false,
+  onStartOpening,
+  onFinishOpening,
   onUpdateBook,
   onPageChange
 }) => {
@@ -45,7 +51,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
   const [animatingProgress, setAnimatingProgress] = useState<number>(1.0);
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const [redoStack, setRedoStack] = useState<string[]>([]);
-  const [isOpeningTransition, setIsOpeningTransition] = useState(false);
+  // Opening state is controlled via props
   const [scale, setScale] = useState(1);
   const isFlippingRef = useRef<boolean>(false);
   const [highlightDrag, setHighlightDrag] = useState<{
@@ -481,14 +487,14 @@ export const BookEngine: React.FC<BookEngineProps> = ({
     activeTargetPage.pageNumber * 50
   );
 
-  // Animate opening the book smoothly with 3D rotation
+  // Animate opening the book smoothly with symmetrical center-split 3D rotation
   const handleOpenBook = () => {
     sound.playBookCover(false);
-    setIsOpeningTransition(true);
+    onStartOpening?.();
     setTimeout(() => {
       onUpdateBook({ isClosed: false });
-      setIsOpeningTransition(false);
-    }, 750);
+      onFinishOpening?.();
+    }, 850);
   };
 
   // Marker Highlighting Handlers
@@ -632,71 +638,129 @@ export const BookEngine: React.FC<BookEngineProps> = ({
       {/* 1. CLOSED BOOK 3D STATE (Realistic Hardcover on Wooden Desk) */}
       {/* ======================================================== */}
       {book.isClosed ? (
-        <div className="perspective-book flex flex-col items-center py-8">
+        <div className="perspective-book flex items-center justify-center py-6 select-none">
+          {/* Symmetrical Book Shell: Expands smoothly from 480px to 960px right where it sits! */}
           <div
-            onClick={handleOpenBook}
-            className={`relative w-[340px] sm:w-[420px] h-[480px] sm:h-[580px] rounded-r-2xl rounded-l-md shadow-[0_35px_70px_rgba(0,0,0,0.85),0_10px_20px_rgba(0,0,0,0.6)] cursor-pointer preserve-3d flex flex-col justify-between p-8 border-r-8 border-b-8 border-black/50 transition-all duration-800 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-              isOpeningTransition
-                ? '-rotate-y-180 translate-x-[-120px] opacity-0 shadow-[0_60px_120px_rgba(0,0,0,0.95)]'
-                : 'hover:scale-[1.01]'
+            onClick={!isOpening ? handleOpenBook : undefined}
+            className={`relative h-[640px] preserve-3d cursor-pointer transition-all duration-850 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_35px_70px_rgba(0,0,0,0.85),0_10px_20px_rgba(0,0,0,0.6)] ${
+              isOpening ? 'w-[960px]' : 'w-[480px]'
             }`}
-            style={{
-              backgroundColor: book.coverColor,
-              transformOrigin: 'left center'
-            }}
           >
-            {/* Hardcover Material Grain / Texture */}
-            <div className="absolute inset-0 opacity-40 mix-blend-overlay pointer-events-none wood-texture" />
-
-            {/* Spine Hinge Groove Shadow */}
-            <div className="absolute top-0 left-0 bottom-0 w-8 bg-gradient-to-r from-black/60 via-black/25 to-transparent" />
-            <div className="absolute top-0 left-6 bottom-0 w-[2px] bg-black/40 shadow-[0_0_5px_rgba(0,0,0,0.7)]" />
-
-            {/* Stacked Page Edge Block Illusion on the right side */}
-            <div className="absolute top-2 right-[-14px] bottom-2 w-3.5 bg-gradient-to-r from-[#e3d7bf] to-[#c7b99c] rounded-r-xs shadow-md border-y border-black/30 flex flex-col justify-between py-1 opacity-90">
-              <div className="w-full h-[1px] bg-black/20" />
-              <div className="w-full h-[1px] bg-black/20" />
-              <div className="w-full h-[1px] bg-black/20" />
-              <div className="w-full h-[1px] bg-black/20" />
+            {/* UNDERNEATH (Right half): Right interior page (Page 2), revealed as front cover lifts */}
+            <div 
+              className={`absolute top-0 bottom-0 right-0 overflow-hidden bg-[#fbf9f5] transition-opacity duration-500 rounded-r-sm ${
+                isOpening ? 'opacity-100' : 'opacity-0'
+              }`}
+              style={{ width: `${PAGE_WIDTH}px` }}
+            >
+              <BookPageCanvas
+                page={rightPage}
+                pageNumber={rightPageNumber}
+                width={PAGE_WIDTH}
+                height={PAGE_HEIGHT}
+                paperType={book.paperType}
+                rulingStyle={book.rulingStyle}
+                isRightPage={true}
+                isActiveWritingPage={false}
+              />
             </div>
 
-            {/* Gilt / Embossed Border Framing - Shifted right to clear spine */}
-            <div className="absolute top-5 bottom-5 left-10 right-4 border border-amber-400/35 rounded-r-xl rounded-l-xs pointer-events-none flex flex-col justify-between p-1.5">
-              <div className="flex justify-between">
-                <div className="w-4 h-4 border-t-2 border-l-2 border-amber-400/60" />
-                <div className="w-4 h-4 border-t-2 border-r-2 border-amber-400/60" />
+            {/* ROTATING FRONT COVER LEAF: Anchored on the center spine axis */}
+            <div
+              className={`absolute top-0 bottom-0 preserve-3d transition-all duration-850 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                isOpening
+                  ? 'left-1/2 -rotate-y-180'
+                  : 'left-0 rotate-y-0'
+              }`}
+              style={{
+                width: `${PAGE_WIDTH}px`,
+                transformOrigin: 'left center',
+                transformStyle: 'preserve-3d'
+              }}
+            >
+              {/* FRONT FACE OF LEAF: Closed Hardcover with Embossed Title & centered gold border */}
+              <div
+                className="absolute inset-0 rounded-r-2xl rounded-l-xs shadow-2xl flex flex-col justify-between p-8 border-r-8 border-b-8 border-black/50 overflow-hidden"
+                style={{
+                  backgroundColor: book.coverColor,
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden'
+                }}
+              >
+                {/* Hardcover Material Grain / Texture */}
+                <div className="absolute inset-0 opacity-40 mix-blend-overlay pointer-events-none wood-texture" />
+
+                {/* Spine Hinge Groove Shadow */}
+                <div className="absolute top-0 left-0 bottom-0 w-8 bg-gradient-to-r from-black/60 via-black/25 to-transparent" />
+                <div className="absolute top-0 left-6 bottom-0 w-[2px] bg-black/40 shadow-[0_0_5px_rgba(0,0,0,0.7)]" />
+
+                {/* Stacked Page Edge Block Illusion on the right side */}
+                <div className="absolute top-2 right-[-14px] bottom-2 w-3.5 bg-gradient-to-r from-[#e3d7bf] to-[#c7b99c] rounded-r-xs shadow-md border-y border-black/30 flex flex-col justify-between py-1 opacity-90">
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <div key={i} className="w-full h-[1px] bg-black/20" />
+                  ))}
+                </div>
+
+                {/* Gilt / Embossed Border Framing - Shifted right to clear spine */}
+                <div className="absolute top-5 bottom-5 left-10 right-4 border border-amber-400/35 rounded-r-xl rounded-l-xs pointer-events-none flex flex-col justify-between p-1.5">
+                  <div className="flex justify-between">
+                    <div className="w-4 h-4 border-t-2 border-l-2 border-amber-400/60" />
+                    <div className="w-4 h-4 border-t-2 border-r-2 border-amber-400/60" />
+                  </div>
+                  <div className="flex justify-between">
+                    <div className="w-4 h-4 border-b-2 border-l-2 border-amber-400/60" />
+                    <div className="w-4 h-4 border-b-2 border-r-2 border-amber-400/60" />
+                  </div>
+                </div>
+
+                {/* Top Cover Tooling Header */}
+                <div className="text-center pt-8 z-10">
+                  <div className="text-[11px] uppercase tracking-widest text-amber-300/60 font-serif">
+                    Handcrafted Physical Edition
+                  </div>
+                </div>
+
+                {/* Embossed Title & Subtitle */}
+                <div className="text-center my-auto z-10 px-4">
+                  <h1 className={`text-2xl sm:text-3xl font-bold font-serif tracking-wider leading-snug ${getFoilStyle(book.embossingColor)}`}>
+                    {book.title}
+                  </h1>
+                  {book.subtitle && (
+                    <p className="text-sm italic text-amber-200/80 font-serif mt-3 tracking-wide">
+                      {book.subtitle}
+                    </p>
+                  )}
+                  <div className="w-16 h-[1px] bg-amber-400/40 mx-auto mt-6" />
+                </div>
+
+                {/* Bottom Colophon Marker */}
+                <div className="text-center pb-6 z-10">
+                  <span className="text-[10px] uppercase tracking-widest text-amber-400/40 font-serif">
+                    Booki Atelier
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <div className="w-4 h-4 border-b-2 border-l-2 border-amber-400/60" />
-                <div className="w-4 h-4 border-b-2 border-r-2 border-amber-400/60" />
+
+              {/* BACK FACE OF LEAF: Left Interior Page (Page 1), revealed as leaf flips over */}
+              <div
+                className="absolute inset-0 overflow-hidden bg-[#fbf9f5] rounded-l-2xl shadow-2xl"
+                style={{
+                  transform: 'rotateY(180deg)',
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden'
+                }}
+              >
+                <BookPageCanvas
+                  page={leftPage}
+                  pageNumber={leftPageNumber}
+                  width={PAGE_WIDTH}
+                  height={PAGE_HEIGHT}
+                  paperType={book.paperType}
+                  rulingStyle={book.rulingStyle}
+                  isRightPage={false}
+                  isActiveWritingPage={false}
+                />
               </div>
-            </div>
-
-            {/* Top Cover Tooling Header */}
-            <div className="text-center pt-8 z-10">
-              <div className="text-[11px] uppercase tracking-widest text-amber-300/60 font-serif">
-                Handcrafted Physical Edition
-              </div>
-            </div>
-
-            {/* Embossed Title & Subtitle */}
-            <div className="text-center my-auto z-10 px-4">
-              <h1 className={`text-2xl sm:text-3xl font-bold font-serif tracking-wider leading-snug ${getFoilStyle(book.embossingColor)}`}>
-                {book.title}
-              </h1>
-              {book.subtitle && (
-                <p className="text-sm italic text-amber-200/80 font-serif mt-3 tracking-wide">
-                  {book.subtitle}
-                </p>
-              )}
-              <div className="w-16 h-[1px] bg-amber-400/40 mx-auto mt-6" />
-            </div>
-
-            {/* Bottom Colophon Marker */}
-            <div className="text-center pb-6 z-10">
-              <span className="text-[10px] uppercase tracking-widest text-amber-400/40 font-serif">
-                Booki Atelier
-              </span>
             </div>
           </div>
         </div>
