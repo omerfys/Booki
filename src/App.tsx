@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Book, WritingInstrument } from './types/book';
+import { Book, BookPage, WritingInstrument } from './types/book';
 import { CHARACTERS, getCharacterById } from './data/characters';
 import { loadAllBooks, saveBookToDB, deleteBookFromDB, getStoredActiveBookId, setStoredActiveBookId } from './storage/db';
 import { BookEngine } from './components/BookEngine';
@@ -106,8 +106,18 @@ export default function App() {
     }
   };
 
-  // Create Book
-  const handleCreateBook = async (title: string) => {
+  // Create Book with dynamic page count
+  const handleCreateBook = async (title: string, requestedPages: number = 24) => {
+    const pageCount = requestedPages % 2 === 0 ? requestedPages : requestedPages + 1;
+    const initialPages: BookPage[] = [];
+    for (let i = 1; i <= pageCount; i++) {
+      initialPages.push({
+        pageNumber: i,
+        strokes: [],
+        rawText: ''
+      });
+    }
+
     const newBook: Book = {
       id: `book-${Date.now()}`,
       title,
@@ -124,18 +134,7 @@ export default function App() {
       penOpacity: 0.95,
       writingSpeed: activeWritingSpeed,
       activeCharacterId: CHARACTERS[0].id,
-      pages: [
-        {
-          pageNumber: 1,
-          strokes: [],
-          rawText: ''
-        },
-        {
-          pageNumber: 2,
-          strokes: [],
-          rawText: ''
-        }
-      ],
+      pages: initialPages,
       bookmarks: [],
       currentPage: 1,
       isClosed: false,

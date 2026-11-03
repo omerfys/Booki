@@ -7,7 +7,7 @@ interface LibraryModalProps {
   books: Book[];
   activeBookId: string;
   onSelectBook: (id: string) => void;
-  onCreateBook: (title: string) => void;
+  onCreateBook: (title: string, pageCount?: number) => void;
   onDuplicateBook: (id: string) => void;
   onRenameBook: (id: string, newTitle: string) => void;
   onDeleteBook: (id: string) => void;
@@ -26,14 +26,14 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
   onClose
 }) => {
   const [newTitle, setNewTitle] = useState('');
+  const [newPageCount, setNewPageCount] = useState<number>(24);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
-
   if (!isOpen) return null;
 
   const handleCreate = () => {
     if (!newTitle.trim()) return;
-    onCreateBook(newTitle.trim());
+    onCreateBook(newTitle.trim(), newPageCount);
     setNewTitle('');
   };
 
@@ -72,8 +72,8 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
           </button>
         </div>
 
-        {/* Create New Book Bar */}
-        <div className="p-4 bg-black/30 border-b border-amber-900/40 flex items-center gap-3">
+        {/* Create New Book Bar with Page Count Selection */}
+        <div className="p-4 bg-black/30 border-b border-amber-900/40 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <input
             type="text"
             placeholder="New book title (e.g. Letters from Paris, Daily Journal)..."
@@ -82,13 +82,45 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
             onKeyDown={e => e.key === 'Enter' && handleCreate()}
             className="flex-1 bg-black/50 border border-amber-800/50 rounded-xl px-4 py-2 text-sm text-amber-100 placeholder-amber-500/40 focus:outline-none focus:border-amber-500"
           />
+
+          {/* Page Count Preset & Custom Input */}
+          <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-xl border border-amber-900/40 shrink-0">
+            <span className="text-xs text-amber-300/80 shrink-0">Pages:</span>
+            <div className="flex gap-1">
+              {[12, 24, 48, 96, 128].map(num => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => setNewPageCount(num)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-mono transition-all cursor-pointer ${
+                    newPageCount === num
+                      ? 'bg-amber-600 text-amber-50 font-bold shadow-xs'
+                      : 'text-amber-400/60 hover:text-amber-200 hover:bg-black/40'
+                  }`}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+            <input
+              type="number"
+              min="2"
+              max="500"
+              step="2"
+              value={newPageCount}
+              onChange={e => setNewPageCount(Math.max(2, Math.min(500, parseInt(e.target.value) || 2)))}
+              className="w-14 bg-black/60 border border-amber-800/40 rounded px-1.5 py-0.5 text-xs text-amber-200 font-mono text-center focus:outline-none focus:border-amber-500"
+              title="Custom Page Count"
+            />
+          </div>
+
           <button
             onClick={handleCreate}
             disabled={!newTitle.trim()}
-            className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:opacity-40 text-amber-50 font-bold text-xs rounded-xl shadow-md border border-amber-400/50 flex items-center gap-1.5 cursor-pointer transition-all"
+            className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:opacity-40 text-amber-50 font-bold text-xs rounded-xl shadow-md border border-amber-400/50 flex items-center justify-center gap-1.5 cursor-pointer transition-all shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>Bind New Book</span>
+            <span>Bind Book</span>
           </button>
         </div>
 

@@ -154,7 +154,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
           mobileScrollSupport: false,
           useMouseEvents: true,
           swipeDistance: 35,
-          showPageCorners: true,
+          showPageCorners: false,
           disableFlipByClick: true,
           clickEventForward: true
         });
@@ -551,7 +551,10 @@ export const BookEngine: React.FC<BookEngineProps> = ({
           <div className="relative flex items-center shadow-[0_45px_90px_rgba(0,0,0,0.85),0_15px_30px_rgba(0,0,0,0.6)] rounded-sm">
             
             {/* Left Stacked Paper Thickness (Deckled Edges) */}
-            <div className="w-3.5 h-[640px] bg-gradient-to-r from-[#bfae8f] via-[#d5c7ab] to-[#ece1cc] rounded-l-xs shadow-inner border-y border-black/30 hidden sm:flex flex-col justify-between py-2">
+            <div 
+              className="h-[640px] bg-gradient-to-r from-[#bfae8f] via-[#d5c7ab] to-[#ece1cc] rounded-l-xs shadow-inner border-y border-black/30 hidden sm:flex flex-col justify-between py-2 shrink-0 transition-all duration-500"
+              style={{ width: `${Math.min(26, Math.max(10, Math.round(book.pages.length * 0.35)))}px` }}
+            >
               {Array.from({ length: 16 }).map((_, i) => (
                 <div key={i} className="w-full h-[1px] bg-black/15" />
               ))}
@@ -631,20 +634,12 @@ export const BookEngine: React.FC<BookEngineProps> = ({
                           animatingProgress={isCurrentWritingTarget ? animatingProgress : 1.0}
                           onClickPage={() => handlePageClick(isRight ? 'right' : 'left')}
                         />
-                        {/* Page Turn Corner Zone (Click or Drag to Turn) */}
+                        {/* Page Turn Corner Zone (Click to flip with animation, drag/hold to bend) */}
                         <div
                           onClick={isRight ? handleNextPage : handlePrevPage}
-                          className={`absolute bottom-0 ${isRight ? 'right-0' : 'left-0'} w-16 h-16 cursor-pointer z-30 group`}
+                          className={`absolute bottom-0 ${isRight ? 'right-0' : 'left-0'} w-20 h-20 cursor-pointer z-30`}
                           title={isRight ? 'Turn to next page' : 'Turn to previous page'}
-                        >
-                          <div
-                            className={`absolute bottom-0 ${isRight ? 'right-0' : 'left-0'} w-0 h-0 border-b-[24px] border-b-black/15 ${
-                              isRight ? 'border-l-[24px] border-l-transparent' : 'border-r-[24px] border-r-transparent'
-                            } transition-all group-hover:border-b-[36px] ${
-                              isRight ? 'group-hover:border-l-[36px]' : 'group-hover:border-r-[36px]'
-                            }`}
-                          />
-                        </div>
+                        />
                       </div>
                     );
                   });
@@ -654,7 +649,10 @@ export const BookEngine: React.FC<BookEngineProps> = ({
             </div>
 
             {/* Right Stacked Paper Thickness (Deckled Edges) */}
-            <div className="w-3.5 h-[640px] bg-gradient-to-r from-[#ece1cc] via-[#d5c7ab] to-[#bfae8f] rounded-r-xs shadow-inner border-y border-black/30 hidden sm:flex flex-col justify-between py-2">
+            <div 
+              className="h-[640px] bg-gradient-to-r from-[#ece1cc] via-[#d5c7ab] to-[#bfae8f] rounded-r-xs shadow-inner border-y border-black/30 hidden sm:flex flex-col justify-between py-2 shrink-0 transition-all duration-500"
+              style={{ width: `${Math.min(26, Math.max(10, Math.round(book.pages.length * 0.35)))}px` }}
+            >
               {Array.from({ length: 16 }).map((_, i) => (
                 <div key={i} className="w-full h-[1px] bg-black/15" />
               ))}
