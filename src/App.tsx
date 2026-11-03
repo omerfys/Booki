@@ -30,7 +30,24 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isMuted, setIsMuted] = useState(sound.getIsMuted());
   const saveTimerRef = useRef<number | null>(null);
+  const currentBook = books.find(b => b.id === activeBookId) || books[0];
+  const activeCharacter = getCharacterById(currentBook?.activeCharacterId || CHARACTERS[0].id);
 
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const updateScale = () => {
+      const availWidth = window.innerWidth - 32;
+      const availHeight = window.innerHeight - 130;
+      const assemblyWidth = currentBook?.isClosed ? 680 : 1240;
+      const scaleX = availWidth / assemblyWidth;
+      const scaleY = availHeight / 720;
+      const target = Math.min(1.0, Math.max(0.42, Math.min(scaleX, scaleY)));
+      setScale(target);
+    };
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, [currentBook?.isClosed]);
   // Load books from IndexedDB on startup
   useEffect(() => {
     async function init() {
@@ -61,8 +78,6 @@ export default function App() {
     init();
   }, []);
 
-  const currentBook = books.find(b => b.id === activeBookId) || books[0];
-  const activeCharacter = getCharacterById(currentBook?.activeCharacterId || CHARACTERS[0].id);
 
   // Debounced Autosave to IndexedDB with fresh state guarantee (fixes page turn loss)
   const handleUpdateBook = useCallback((updated: Partial<Book>) => {
@@ -307,64 +322,71 @@ export default function App() {
       {/* ======================================================== */}
       {/* 2. MAIN CENTER STAGE: 3D BOOK FLANKED BY DESK PEN STANDS */}
       {/* ======================================================== */}
-      <main className="flex-1 flex items-center justify-center relative z-10 px-2 sm:px-6 overflow-hidden gap-3 lg:gap-8">
-        {/* Left Desk Stand: Smoothly glides left when book opens, glides right when book closes */}
-        <div className={`transition-all duration-900 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          currentBook.isClosed ? 'translate-x-[140px] sm:translate-x-[180px] pointer-events-none' : 'translate-x-0'
-        }`}>
-          <LeftDeskPenStand
-            currentInstrument={activeInstrument}
-            onSelectInstrument={inst => {
-              setActiveInstrument(inst);
-              handleUpdateBook({ instrument: inst });
-            }}
-            onSelectColor={col => {
-              setActiveColor(col);
-              handleUpdateBook({ penColor: col });
-            }}
-          />
-        </div>
-        {/* Center Stage: Interactive 3D Hardcover Book */}
-        <BookEngine
-          key={currentBook.id}
-          book={currentBook}
-          activeCharacter={activeCharacter}
-          instrument={activeInstrument}
-          penColor={activeColor}
-          penThickness={activeThickness}
-          writingSpeed={activeWritingSpeed}
-          fontSize={activeSize}
-          onUpdateBook={handleUpdateBook}
-        />
+      <main className="flex-1 flex items-center justify-center relative z-10 px-2 sm:px-4 overflow-hidden">
+        {/* Whole Desk Assembly (Left Stand + Book + Right Stand) with Smooth Scale and Slide */}
+        <div 
+          className="flex items-center justify-center gap-4 sm:gap-6 lg:gap-10 transition-all duration-900 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}
+        >
+          {/* Left Desk Stand: Strictly to the left of the book */}
+          <div className="shrink-0 transition-transform duration-900 ease-[cubic-bezier(0.22,1,0.36,1)]">
+            <LeftDeskPenStand
+              currentInstrument={activeInstrument}
+              onSelectInstrument={inst => {
+                setActiveInstrument(inst);
+                handleUpdateBook({ instrument: inst });
+              }}
+              onSelectColor={col => {
+                setActiveColor(col);
+                handleUpdateBook({ penColor: col });
+              }}
+            />
+          </div>
 
-        {/* Right Desk Stand: Smoothly glides right when book opens, glides left when book closes */}
-        <div className={`transition-all duration-900 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          currentBook.isClosed ? '-translate-x-[140px] sm:-translate-x-[180px] pointer-events-none' : 'translate-x-0'
-        }`}>
-          <RightDeskPenStand
-            currentInstrument={activeInstrument}
-            currentColor={activeColor}
-            currentThickness={activeThickness}
-            currentWritingSpeed={activeWritingSpeed}
-            currentSize={activeSize}
-            onSelectInstrument={inst => {
-              setActiveInstrument(inst);
-              handleUpdateBook({ instrument: inst });
-            }}
-            onSelectColor={col => {
-              setActiveColor(col);
-              handleUpdateBook({ penColor: col });
-            }}
-            onChangeThickness={th => {
-              setActiveThickness(th);
-              handleUpdateBook({ penThickness: th });
-            }}
-            onChangeWritingSpeed={spd => {
-              setActiveWritingSpeed(spd);
-              handleUpdateBook({ writingSpeed: spd });
-            }}
-            onChangeSize={sz => setActiveSize(sz)}
-          />
+          {/* Center Stage: Interactive 3D Hardcover Book (Width animates smoothly between 420px and 960px) */}
+          <div className={`transition-all duration-900 ease-[cubic-bezier(0.22,1,0.36,1)] flex items-center justify-center shrink-0 ${
+            currentBook.isClosed ? 'w-[420px]' : 'w-[960px]'
+          }`}>
+            <BookEngine
+              key={currentBook.id}
+              book={currentBook}
+              activeCharacter={activeCharacter}
+              instrument={activeInstrument}
+              penColor={activeColor}
+              penThickness={activeThickness}
+              writingSpeed={activeWritingSpeed}
+              fontSize={activeSize}
+              onUpdateBook={handleUpdateBook}
+            />
+          </div>
+
+          {/* Right Desk Stand: Strictly to the right of the book */}
+          <div className="shrink-0 transition-transform duration-900 ease-[cubic-bezier(0.22,1,0.36,1)]">
+            <RightDeskPenStand
+              currentInstrument={activeInstrument}
+              currentColor={activeColor}
+              currentThickness={activeThickness}
+              currentWritingSpeed={activeWritingSpeed}
+              currentSize={activeSize}
+              onSelectInstrument={inst => {
+                setActiveInstrument(inst);
+                handleUpdateBook({ instrument: inst });
+              }}
+              onSelectColor={col => {
+                setActiveColor(col);
+                handleUpdateBook({ penColor: col });
+              }}
+              onChangeThickness={th => {
+                setActiveThickness(th);
+                handleUpdateBook({ penThickness: th });
+              }}
+              onChangeWritingSpeed={spd => {
+                setActiveWritingSpeed(spd);
+                handleUpdateBook({ writingSpeed: spd });
+              }}
+              onChangeSize={sz => setActiveSize(sz)}
+            />
+          </div>
         </div>
       </main>
       {/* ======================================================== */}

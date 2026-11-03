@@ -615,7 +615,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-center select-none" style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}>
+    <div className="relative flex flex-col items-center justify-center select-none w-full">
       
       {/* Hidden Textarea for capturing physical keyboard typing (disabled when highlighting) */}
       {!book.isClosed && instrument !== 'marker' && (
