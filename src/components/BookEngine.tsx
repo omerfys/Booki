@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { PageFlip } from 'page-flip';
-import { Book, CharacterProfile, WritingInstrument } from '../types/book';
+import { Book, CharacterProfile, WritingInstrument, PageHighlight } from '../types/book';
 import { BookPageCanvas } from './BookPageCanvas';
 import { RibbonBookmark } from './RibbonBookmark';
 import { generatePageStrokes, PageLayoutConstraints } from '../engine/handwriting/strokeGenerator';
@@ -47,7 +47,14 @@ export const BookEngine: React.FC<BookEngineProps> = ({
   const [redoStack, setRedoStack] = useState<string[]>([]);
   const [isOpeningTransition, setIsOpeningTransition] = useState(false);
   const [scale, setScale] = useState(1);
-
+  const isFlippingRef = useRef<boolean>(false);
+  const [highlightDrag, setHighlightDrag] = useState<{
+    pageNumber: number;
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
   useEffect(() => {
     const updateScale = () => {
       const availWidth = window.innerWidth - 32;
@@ -163,6 +170,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
         if (pageElements.length >= 2) {
           pf.loadFromHTML(pageElements);
           pf.on('flip', e => {
+            isFlippingRef.current = false;
             sound.playPageTurn();
             const newIndex = (e.data as number) + 1;
             setActivePageIndex(newIndex);
@@ -189,6 +197,9 @@ export const BookEngine: React.FC<BookEngineProps> = ({
 
   // Perform the exact same 3D paper bending, diagonal curling, and folding animation as mouse drag
   const animateCornerCurlFlip = useCallback((direction: 'next' | 'prev') => {
+    if (isFlippingRef.current) return;
+    isFlippingRef.current = true;
+
     sound.playPageTurn();
 
     const distEl = (containerRef.current?.querySelector('.stf__block') as HTMLElement | null) || containerRef.current;
@@ -196,10 +207,11 @@ export const BookEngine: React.FC<BookEngineProps> = ({
       const rect = distEl.getBoundingClientRect();
       const isNext = direction === 'next';
 
-      const startX = isNext ? (rect.left + rect.width - 25) : (rect.left + 25);
-      const startY = rect.top + rect.height - 25;
-      const targetX = isNext ? (rect.left + rect.width * 0.35) : (rect.left + rect.width * 0.65);
-      const targetY = rect.top + rect.height * 0.82;
+      // Full sweep: from far right edge completely across to the far left edge!
+      const startX = isNext ? (rect.left + rect.width - 20) : (rect.left + 20);
+      const startY = rect.top + rect.height - 20;
+      const targetX = isNext ? (rect.left + 20) : (rect.left + rect.width - 20);
+      const targetY = rect.top + rect.height * 0.85;
 
       // 1. Mouse down on distEl
       distEl.dispatchEvent(new MouseEvent('mousedown', {
@@ -209,8 +221,9 @@ export const BookEngine: React.FC<BookEngineProps> = ({
         cancelable: true,
         view: window
       }));
-      // 2. Animate a natural 3D curl trajectory across the page over 160ms
-      const steps = 10;
+
+      // 2. Animate complete natural 3D curl trajectory across the entire book over 180ms
+      const steps = 12;
       let s = 1;
       const stepInterval = setInterval(() => {
         const frac = s / steps;
@@ -228,7 +241,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
         s++;
         if (s > steps) {
           clearInterval(stepInterval);
-          // 3. Mouse up: StPageFlip's internal physics engine (stopMove) completes the 3D flip smoothly!
+          // 3. Mouse up: StPageFlip's internal physics engine completes the 3D flip cleanly!
           window.dispatchEvent(new MouseEvent('mouseup', {
             clientX: targetX,
             clientY: targetY,
@@ -236,17 +249,24 @@ export const BookEngine: React.FC<BookEngineProps> = ({
             cancelable: true,
             view: window
           }));
+          setTimeout(() => {
+            isFlippingRef.current = false;
+          }, 700);
         }
-      }, 16);
+      }, 15);
       return;
     }
 
-    // Fallback if container not found
     if (pageFlipRef.current) {
       try {
         if (direction === 'next') pageFlipRef.current.flipNext('bottom');
         else pageFlipRef.current.flipPrev('bottom');
       } catch {}
+      setTimeout(() => {
+        isFlippingRef.current = false;
+      }, 700);
+    } else {
+      isFlippingRef.current = false;
     }
   }, []);
 
@@ -461,14 +481,62 @@ export const BookEngine: React.FC<BookEngineProps> = ({
     activeTargetPage.pageNumber * 50
   );
 
-  // Animate opening the book
+  // Animate opening the book smoothly with 3D rotation
   const handleOpenBook = () => {
     sound.playBookCover(false);
     setIsOpeningTransition(true);
     setTimeout(() => {
       onUpdateBook({ isClosed: false });
       setIsOpeningTransition(false);
-    }, 600);
+    }, 750);
+  };
+
+  // Marker Highlighting Handlers
+  const handlePointerDownPage = (e: React.PointerEvent<HTMLDivElement>, pageNum: number) => {
+    if (instrument !== 'marker') return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+    setHighlightDrag({ pageNumber: pageNum, startX: x, startY: y, currentX: x, currentY: y });
+    sound.playWritingSound('marker');
+  };
+
+  const handlePointerMovePage = (e: React.PointerEvent<HTMLDivElement>, pageNum: number) => {
+    if (instrument !== 'marker' || !highlightDrag || highlightDrag.pageNumber !== pageNum) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+    setHighlightDrag(prev => prev ? { ...prev, currentX: x, currentY: y } : null);
+  };
+
+  const handlePointerUpPage = (e: React.PointerEvent<HTMLDivElement>, pageNum: number) => {
+    if (instrument !== 'marker' || !highlightDrag || highlightDrag.pageNumber !== pageNum) return;
+    const minX = Math.min(highlightDrag.startX, highlightDrag.currentX);
+    const maxX = Math.max(highlightDrag.startX, highlightDrag.currentX);
+    const minY = Math.min(highlightDrag.startY, highlightDrag.currentY);
+    const maxY = Math.max(highlightDrag.startY, highlightDrag.currentY);
+
+    const width = Math.max(16, maxX - minX);
+    const height = Math.max(18, maxY - minY);
+
+    const targetPage = book.pages.find(p => p.pageNumber === pageNum);
+    if (targetPage) {
+      const newHighlight: PageHighlight = {
+        id: `hl-${Date.now()}`,
+        color: penColor || '#facc15',
+        opacity: 0.45,
+        rects: [{ x: minX, y: minY, width, height }],
+        timestamp: Date.now()
+      };
+      const updated = {
+        ...targetPage,
+        highlights: [...(targetPage.highlights || []), newHighlight]
+      };
+      const newPages = book.pages.map(p => (p.pageNumber === pageNum ? updated : p));
+      onUpdateBook({ pages: newPages });
+      sound.playWritingSound('marker');
+    }
+    setHighlightDrag(null);
   };
 
   // Close the book
@@ -494,8 +562,8 @@ export const BookEngine: React.FC<BookEngineProps> = ({
   return (
     <div className="relative flex flex-col items-center justify-center select-none" style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}>
       
-      {/* Hidden Textarea for capturing physical keyboard typing */}
-      {!book.isClosed && (
+      {/* Hidden Textarea for capturing physical keyboard typing (disabled when highlighting) */}
+      {!book.isClosed && instrument !== 'marker' && (
         <textarea
           ref={hiddenInputRef}
           value={activeTargetPage.rawText}
@@ -512,10 +580,15 @@ export const BookEngine: React.FC<BookEngineProps> = ({
         <div className="perspective-book flex flex-col items-center py-8">
           <div
             onClick={handleOpenBook}
-            className={`relative w-[340px] sm:w-[420px] h-[480px] sm:h-[580px] rounded-r-2xl rounded-l-md shadow-[0_35px_70px_rgba(0,0,0,0.85),0_10px_20px_rgba(0,0,0,0.6)] cursor-pointer transition-all duration-700 preserve-3d flex flex-col justify-between p-8 border-r-8 border-b-8 border-black/50 group ${
-              isOpeningTransition ? '-rotate-y-45 scale-95 opacity-50' : 'hover:scale-[1.01]'
+            className={`relative w-[340px] sm:w-[420px] h-[480px] sm:h-[580px] rounded-r-2xl rounded-l-md shadow-[0_35px_70px_rgba(0,0,0,0.85),0_10px_20px_rgba(0,0,0,0.6)] cursor-pointer preserve-3d flex flex-col justify-between p-8 border-r-8 border-b-8 border-black/50 transition-all duration-800 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              isOpeningTransition
+                ? '-rotate-y-180 translate-x-[-120px] opacity-0 shadow-[0_60px_120px_rgba(0,0,0,0.95)]'
+                : 'hover:scale-[1.01]'
             }`}
-            style={{ backgroundColor: book.coverColor }}
+            style={{
+              backgroundColor: book.coverColor,
+              transformOrigin: 'left center'
+            }}
           >
             {/* Hardcover Material Grain / Texture */}
             <div className="absolute inset-0 opacity-40 mix-blend-overlay pointer-events-none wood-texture" />
@@ -532,8 +605,8 @@ export const BookEngine: React.FC<BookEngineProps> = ({
               <div className="w-full h-[1px] bg-black/20" />
             </div>
 
-            {/* Gilt / Embossed Border Framing */}
-            <div className="absolute inset-5 border border-amber-400/35 rounded-r-xl rounded-l-xs pointer-events-none flex flex-col justify-between p-1.5">
+            {/* Gilt / Embossed Border Framing - Shifted right to clear spine */}
+            <div className="absolute top-5 bottom-5 left-10 right-4 border border-amber-400/35 rounded-r-xl rounded-l-xs pointer-events-none flex flex-col justify-between p-1.5">
               <div className="flex justify-between">
                 <div className="w-4 h-4 border-t-2 border-l-2 border-amber-400/60" />
                 <div className="w-4 h-4 border-t-2 border-r-2 border-amber-400/60" />
@@ -543,12 +616,6 @@ export const BookEngine: React.FC<BookEngineProps> = ({
                 <div className="w-4 h-4 border-b-2 border-r-2 border-amber-400/60" />
               </div>
             </div>
-
-            {/* Ribbon tail peeking out from the bottom edge */}
-            <div
-              className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-6 h-18 shadow-xl rounded-b-sm"
-              style={{ backgroundColor: book.ribbonColor }}
-            />
 
             {/* Top Cover Tooling Header */}
             <div className="text-center pt-8 z-10">
@@ -570,15 +637,11 @@ export const BookEngine: React.FC<BookEngineProps> = ({
               <div className="w-16 h-[1px] bg-amber-400/40 mx-auto mt-6" />
             </div>
 
-            {/* Bottom Colophon Marker & Open Callout */}
-            <div className="text-center pb-4 z-10">
-              <button
-                onClick={handleOpenBook}
-                className="px-5 py-2 bg-black/40 hover:bg-black/60 border border-amber-500/40 rounded-full text-xs text-amber-200 font-serif flex items-center gap-2 mx-auto shadow-lg cursor-pointer transition-all hover:scale-105"
-              >
-                <BookOpen className="w-4 h-4 text-amber-400" />
-                <span>Open Hardcover Book</span>
-              </button>
+            {/* Bottom Colophon Marker */}
+            <div className="text-center pb-6 z-10">
+              <span className="text-[10px] uppercase tracking-widest text-amber-400/40 font-serif">
+                Booki Atelier
+              </span>
             </div>
           </div>
         </div>
@@ -669,11 +732,29 @@ export const BookEngine: React.FC<BookEngineProps> = ({
                           paperType={book.paperType}
                           rulingStyle={book.rulingStyle}
                           isRightPage={isRight}
-                          isActiveWritingPage={isCurrentWritingTarget}
-                          caretPosition={isCurrentWritingTarget ? activeLayout.caretPosition : undefined}
+                          isActiveWritingPage={isCurrentWritingTarget && instrument !== 'marker'}
+                          caretPosition={isCurrentWritingTarget && instrument !== 'marker' ? activeLayout.caretPosition : undefined}
                           animatingStrokeId={isCurrentWritingTarget ? animatingStrokeId : undefined}
                           animatingProgress={isCurrentWritingTarget ? animatingProgress : 1.0}
-                          onClickPage={() => handlePageClick(isRight ? 'right' : 'left')}
+                          activeHighlightRect={
+                            highlightDrag && highlightDrag.pageNumber === p.pageNumber
+                              ? {
+                                  x: Math.min(highlightDrag.startX, highlightDrag.currentX),
+                                  y: Math.min(highlightDrag.startY, highlightDrag.currentY),
+                                  width: Math.max(16, Math.abs(highlightDrag.currentX - highlightDrag.startX)),
+                                  height: Math.max(18, Math.abs(highlightDrag.currentY - highlightDrag.startY)),
+                                  color: penColor || '#facc15'
+                                }
+                              : null
+                          }
+                          onPointerDownPage={e => handlePointerDownPage(e, p.pageNumber)}
+                          onPointerMovePage={e => handlePointerMovePage(e, p.pageNumber)}
+                          onPointerUpPage={e => handlePointerUpPage(e, p.pageNumber)}
+                          onClickPage={() => {
+                            if (instrument !== 'marker') {
+                              handlePageClick(isRight ? 'right' : 'left');
+                            }
+                          }}
                         />
                         {/* Page Turn Corner Zone (Click to flip with animation, drag/hold to bend) */}
                         <div

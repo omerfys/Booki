@@ -11,6 +11,7 @@ class SoundEngine {
   private isMuted: boolean = false;
   private volume: number = 0.85;
   private lastStrokeSoundTime: number = 0;
+  private lastPageTurnTime: number = 0;
   private activeWritingGain: GainNode | null = null;
 
   // Real Acoustic Recorded Audio Buffers
@@ -254,8 +255,12 @@ class SoundEngine {
     }
   }
 
-  // Real Page Turn Audio Playback
+  // Real Page Turn Audio Playback with 450ms debounce against rapid clicks
   public playPageTurn(): void {
+    const now = Date.now();
+    if (now - this.lastPageTurnTime < 450) return;
+    this.lastPageTurnTime = now;
+
     if (this.realPageTurnBuffer) {
       this.playBuffer(this.realPageTurnBuffer, 1.1);
       return;
@@ -265,7 +270,6 @@ class SoundEngine {
       this.synthesizePageTurn(ctx);
     }
   }
-
   // =========================================================================
   // FALLBACK PROCEDURAL ACOUSTIC MODELS
   // =========================================================================

@@ -49,10 +49,19 @@ export interface HandwrittenStroke {
   timestamp: number;
 }
 
+export interface PageHighlight {
+  id: string;
+  color: string;
+  opacity: number;
+  rects: Array<{ x: number; y: number; width: number; height: number }>;
+  timestamp: number;
+}
+
 export interface BookPage {
   pageNumber: number; // 1-based display
   strokes: HandwrittenStroke[];
   rawText: string;
+  highlights?: PageHighlight[];
   lastEdited?: number;
 }
 

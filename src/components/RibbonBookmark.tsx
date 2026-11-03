@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Bookmark as BookmarkType } from '../types/book';
-import { Bookmark, Plus, Trash2, X, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react';
+import { Bookmark, Plus, Trash2, X, ChevronRight } from 'lucide-react';
 import { sound } from '../engine/audio/soundEngine';
 
 interface RibbonBookmarkProps {
@@ -189,19 +189,6 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
           </svg>
         </div>
 
-        {/* Draggable Pull Handle (Bottom Swallowtail Tip when placed) */}
-        {isPlaced && (
-          <div
-            onPointerDown={handlePointerDown}
-            onClick={handleToggleRibbon}
-            className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-8 h-8 flex items-center justify-center cursor-pointer group"
-            title="Click or drag up to remove ribbon from this page"
-          >
-            <div className="p-1 rounded-full bg-black/50 border border-amber-500/40 opacity-0 group-hover:opacity-100 transition-opacity text-amber-200">
-              <ArrowUp className="w-3 h-3 animate-bounce" />
-            </div>
-          </div>
-        )}
       </div>
 
 

@@ -25,11 +25,11 @@ export const INK_PALETTES: Record<WritingInstrument, Array<{ name: string; hex: 
     { name: 'Dark Teal Emerald', hex: '#115e59' }
   ],
   marker: [
-    { name: 'Solar Yellow', hex: '#ca8a04' },
-    { name: 'Highlighter Green', hex: '#16a34a' },
-    { name: 'Electric Cyan', hex: '#0284c7' },
-    { name: 'Rose Highlighter', hex: '#db2777' },
-    { name: 'Amber Orange', hex: '#ea580c' }
+    { name: 'Solar Yellow', hex: '#facc15' },
+    { name: 'Neon Green', hex: '#4ade80' },
+    { name: 'Sky Cyan', hex: '#38bdf8' },
+    { name: 'Rose Pink', hex: '#f472b6' },
+    { name: 'Sunset Amber', hex: '#fb923c' }
   ]
 };
 
@@ -215,7 +215,7 @@ export const RightDeskPenStand: React.FC<RightDeskPenStandProps> = ({
                 ? 'bg-amber-900/50 shadow-[0_0_18px_rgba(217,119,6,0.35)] -translate-y-2 ring-1 ring-amber-400/50'
                 : 'hover:-translate-y-1 opacity-75 hover:opacity-100'
             }`}
-            title="Artist Marker"
+            title="Highlighter / Metin Vurgulayıcı"
           >
             <div className="w-4 h-28 relative flex flex-col items-center justify-between">
               {/* Flat cap top */}
@@ -228,7 +228,7 @@ export const RightDeskPenStand: React.FC<RightDeskPenStandProps> = ({
               <div className="w-4 h-1.5 bg-zinc-800" />
               <div className="w-3.5 h-3 bg-amber-500 rounded-b-xs" />
             </div>
-            <span className="text-[10px] text-amber-300/80 mt-1.5 font-serif font-medium">Marker</span>
+            <span className="text-[10px] text-amber-300/80 mt-1.5 font-serif font-medium">Highlight</span>
           </button>
 
         </div>
