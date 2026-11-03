@@ -45,11 +45,8 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
 
   const isPlaced = !!activeBookmark;
 
-  const currentColor = activeBookmark
-    ? activeBookmark.color
-    : (bookmarks[0]?.color || selectedColor);
-
-  const colorMeta = RIBBON_COLORS.find(c => c.hex === currentColor) || RIBBON_COLORS[0];
+  // Always Crimson Red per user requirement - zero orange
+  const colorMeta = { name: 'Crimson Red', hex: '#991b1b', light: '#dc2626' };
 
   const totalHeight = bookHeight + 48;
   const restingHeight = 26; // Tucked above the spine when not placed
@@ -65,7 +62,7 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
     if (isPlaced && activeBookmark) {
       onRemoveBookmark(activeBookmark.id);
     } else {
-      onAddBookmark(currentPage, `Page ${currentPage}`, selectedColor);
+      onAddBookmark(currentPage, `Page ${currentPage}`, '#991b1b');
     }
   }, [isPlaced, activeBookmark, currentPage, onAddBookmark, onRemoveBookmark, selectedColor]);
 
@@ -96,7 +93,7 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
       if (finalHeight > totalHeight * 0.45) {
         if (!isPlaced) {
           sound.playRibbonSlide();
-          onAddBookmark(currentPage, `Page ${currentPage}`, selectedColor);
+          onAddBookmark(currentPage, `Page ${currentPage}`, '#991b1b');
         }
       } else {
         if (isPlaced && activeBookmark) {
@@ -117,10 +114,13 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
       {/* ======================================================== */}
       <div 
         ref={containerRef}
-        className={`absolute top-[-24px] left-1/2 transform -translate-x-1/2 z-30 select-none ${
-          isDragging ? 'cursor-grabbing' : 'cursor-grab'
+        onClick={handleToggleRibbon}
+        onPointerDown={handlePointerDown}
+        className={`absolute top-[-26px] left-1/2 transform -translate-x-1/2 z-35 select-none cursor-pointer group ${
+          isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:brightness-110'
         }`}
         style={{ width: '38px' }}
+        title={isPlaced ? 'Ayracı kaldırmak için üzerine tıklayın' : 'Ayracı sayfaya koymak için tıklayın veya aşağı çekin'}
       >
         {/* Animated height container */}
         <div
@@ -204,40 +204,6 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
         )}
       </div>
 
-      {/* ======================================================== */}
-      {/* 2. TOP SPINE RIBBON CONTROL CHIP                         */}
-      {/* ======================================================== */}
-      <div className="absolute top-[-14px] left-1/2 transform -translate-x-1/2 z-40 flex items-center gap-1">
-        {/* Toggle Ribbon on Current Page Button */}
-        <button
-          onClick={handleToggleRibbon}
-          onPointerDown={!isPlaced ? handlePointerDown : undefined}
-          className={`px-2.5 py-1 rounded-b-md text-xs font-serif flex items-center gap-1.5 shadow-lg border backdrop-blur-sm cursor-pointer transition-all duration-300 ${
-            isPlaced
-              ? 'bg-amber-900/90 hover:bg-amber-800 border-amber-500/60 text-amber-100 ring-1 ring-amber-400/40'
-              : 'bg-black/60 hover:bg-amber-950/70 border-amber-800/40 text-amber-300/80 hover:text-amber-100'
-          }`}
-          title={isPlaced ? 'Click to remove ribbon from page' : 'Click or drag down to place ribbon on this page'}
-        >
-          <div 
-            className="w-2.5 h-3.5 rounded-xs shadow-xs shrink-0" 
-            style={{ backgroundColor: colorMeta.hex }} 
-          />
-          <span className="text-[11px] font-medium hidden sm:inline">
-            {isPlaced ? 'Ribbon Placed' : 'Place Ribbon'}
-          </span>
-          {!isPlaced && <ArrowDown className="w-3 h-3 text-amber-400/70" />}
-        </button>
-
-        {/* Bookmark Manager Flyout Toggle */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="p-1 bg-black/60 hover:bg-amber-950/70 border border-amber-800/40 rounded-b-md text-amber-300/80 hover:text-amber-100 shadow-lg cursor-pointer"
-          title="All Bookmarked Pages"
-        >
-          <Bookmark className="w-3 h-3" />
-        </button>
-      </div>
 
       {/* ======================================================== */}
       {/* 3. BOOKMARK MANAGER MODAL / FLYOUT                       */}

@@ -187,35 +187,33 @@ export const BookEngine: React.FC<BookEngineProps> = ({
     };
   }, [book.id, book.isClosed, book.pages.length]);
 
-  // Turn to Next Page
+  // Turn to Next Page - ALWAYS animated via StPageFlip!
   const handleNextPage = useCallback(() => {
-    sound.playPageTurn();
     if (pageFlipRef.current) {
+      sound.playPageTurn();
       try {
         pageFlipRef.current.flipNext('bottom');
-        return;
-      } catch {}
+      } catch {
+        try {
+          pageFlipRef.current.turnToNextPage();
+        } catch {}
+      }
     }
-    const nextIdx = Math.min(book.pages.length + 1, activePageIndex + 2);
-    setActivePageIndex(nextIdx);
-    onPageChange?.(nextIdx);
-    onUpdateBook({ currentPage: nextIdx });
-  }, [activePageIndex, book.pages.length, onPageChange, onUpdateBook]);
+  }, []);
 
-  // Turn to Prev Page
+  // Turn to Prev Page - ALWAYS animated via StPageFlip!
   const handlePrevPage = useCallback(() => {
-    sound.playPageTurn();
     if (pageFlipRef.current) {
+      sound.playPageTurn();
       try {
         pageFlipRef.current.flipPrev('bottom');
-        return;
-      } catch {}
+      } catch {
+        try {
+          pageFlipRef.current.turnToPrevPage();
+        } catch {}
+      }
     }
-    const prevIdx = Math.max(1, activePageIndex - 2);
-    setActivePageIndex(prevIdx);
-    onPageChange?.(prevIdx);
-    onUpdateBook({ currentPage: prevIdx });
-  }, [activePageIndex, onPageChange, onUpdateBook]);
+  }, []);
   // Keyboard Navigation: Arrow Left/Right
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
