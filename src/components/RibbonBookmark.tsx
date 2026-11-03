@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Bookmark as BookmarkType } from '../types/book';
 import { Bookmark, Plus, Trash2, X, ChevronRight } from 'lucide-react';
 import { sound } from '../engine/audio/soundEngine';
@@ -35,9 +35,19 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
   const [selectedColor, setSelectedColor] = useState(RIBBON_COLORS[0].hex);
   const [isDragging, setIsDragging] = useState(false);
   const [dragHeight, setDragHeight] = useState<number | null>(null);
+  const [dragTilt, setDragTilt] = useState(0);
+  const [animateSlide, setAnimateSlide] = useState(false);
 
+  const prevPageRef = useRef(currentPage);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // When navigating between pages: do NOT animate slide-down! It must already be there ("hep ordaymış gibi")
+  useEffect(() => {
+    if (prevPageRef.current !== currentPage) {
+      setAnimateSlide(false);
+      prevPageRef.current = currentPage;
+    }
+  }, [currentPage]);
   // Check if current spread has a bookmark placed on it
   const activeBookmark = bookmarks.find(
     b => b.pageNumber === currentPage || b.pageNumber === currentPage + 1
@@ -58,39 +68,52 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
 
   // Interactive Click to Toggle Ribbon Placement on Current Page
   const handleToggleRibbon = useCallback(() => {
+    setAnimateSlide(true);
     sound.playRibbonSlide();
     if (isPlaced && activeBookmark) {
       onRemoveBookmark(activeBookmark.id);
     } else {
       onAddBookmark(currentPage, `Page ${currentPage}`, '#991b1b');
     }
-  }, [isPlaced, activeBookmark, currentPage, onAddBookmark, onRemoveBookmark, selectedColor]);
+  }, [isPlaced, activeBookmark, currentPage, onAddBookmark, onRemoveBookmark]);
 
-  // Interactive Drag-and-Drop: pull ribbon down into book, or drag up to remove
+  // Interactive Physical Drag-and-Drop: grab ribbon from top or tail, pull down to place, pull up to remove
   const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
     e.preventDefault();
-    setIsDragging(true);
+    e.stopPropagation();
 
+    setIsDragging(true);
+    setAnimateSlide(false);
+
+    const startX = e.clientX;
     const startY = e.clientY;
     const initialHeight = currentVisualHeight;
 
     const onPointerMove = (moveEv: PointerEvent) => {
+      const deltaX = moveEv.clientX - startX;
       const deltaY = moveEv.clientY - startY;
-      const targetH = Math.max(restingHeight, Math.min(totalHeight, initialHeight + deltaY));
+      const targetH = Math.max(restingHeight, Math.min(totalHeight + 20, initialHeight + deltaY));
+      const targetTilt = Math.max(-12, Math.min(12, deltaX * 0.15));
+
       setDragHeight(targetH);
+      setDragTilt(targetTilt);
     };
 
     const onPointerUp = (upEv: PointerEvent) => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
 
-      const finalDelta = upEv.clientY - startY;
-      const finalHeight = initialHeight + finalDelta;
+      const finalDeltaY = upEv.clientY - startY;
+      const finalHeight = initialHeight + finalDeltaY;
+
       setIsDragging(false);
       setDragHeight(null);
+      setDragTilt(0);
+      setAnimateSlide(true);
 
-      // Threshold: if dragged more than halfway down, place ribbon; else remove
-      if (finalHeight > totalHeight * 0.45) {
+      // Threshold: if dragged more than 38% down, place ribbon; else remove / tuck
+      if (finalHeight > totalHeight * 0.38) {
         if (!isPlaced) {
           sound.playRibbonSlide();
           onAddBookmark(currentPage, `Page ${currentPage}`, '#991b1b');
@@ -116,21 +139,31 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
         ref={containerRef}
         onClick={handleToggleRibbon}
         onPointerDown={handlePointerDown}
-        className={`absolute top-[-26px] left-1/2 transform -translate-x-1/2 z-32 select-none cursor-pointer group ${
+        className={`absolute top-[-26px] left-1/2 transform -translate-x-1/2 z-4 select-none cursor-pointer group ${
           isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:brightness-110'
         }`}
         style={{ width: '38px' }}
-        title={isPlaced ? 'Ayracı kaldırmak için üzerine tıklayın' : 'Ayracı sayfaya koymak için tıklayın veya aşağı çekin'}
+        title={isPlaced ? 'Ayracı kaldırmak için tıklayın veya yukarı çekin' : 'Ayracı sayfaya yerleştirmek için aşağı çekin veya tıklayın'}
       >
-        {/* Animated height container */}
+        {/* Animated height container with Physics tilt and zero-delay on page navigation */}
         <div
-          className={`relative overflow-hidden ${isDragging ? '' : 'transition-all duration-700 ease-[cubic-bezier(0.34,1.25,0.64,1)]'}`}
-          style={{ height: `${currentVisualHeight}px`, width: '38px' }}
+          className={`relative overflow-hidden origin-top ${
+            isDragging
+              ? 'transition-none'
+              : animateSlide
+              ? 'transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
+              : 'transition-none'
+          }`}
+          style={{
+            height: `${currentVisualHeight}px`,
+            width: '38px',
+            transform: `rotate(${dragTilt}deg)`
+          }}
         >
           <svg
             width="38"
-            height={totalHeight}
-            viewBox={`0 0 38 ${totalHeight}`}
+            height={Math.max(restingHeight + 10, currentVisualHeight)}
+            viewBox={`0 0 38 ${Math.max(restingHeight + 10, currentVisualHeight)}`}
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             className="filter drop-shadow-md"
@@ -156,36 +189,46 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
               fill="rgba(0,0,0,0.55)"
             />
 
-            {/* Draped ribbon body with swallowtail tip */}
-            <path
-              d={`
-                M 8 12
-                C 12 ${bookHeight * 0.3}, 26 ${bookHeight * 0.6}, 16 ${bookHeight}
-                L 16 ${bookHeight + 36}
-                L 25 ${bookHeight + 24}
-                L 34 ${bookHeight + 36}
-                L 34 ${bookHeight}
-                C 44 ${bookHeight * 0.6}, 30 ${bookHeight * 0.3}, 30 12
-                Z
-              `}
-              fill="url(#ribbonGrad)"
-            />
-
-            {/* Satin sheen texture overlay */}
-            <path
-              d={`
-                M 8 12
-                C 12 ${bookHeight * 0.3}, 26 ${bookHeight * 0.6}, 16 ${bookHeight}
-                L 16 ${bookHeight + 36}
-                L 25 ${bookHeight + 24}
-                L 34 ${bookHeight + 36}
-                L 34 ${bookHeight}
-                C 44 ${bookHeight * 0.6}, 30 ${bookHeight * 0.3}, 30 12
-                Z
-              `}
-              fill="url(#ribbonShade)"
-              opacity="0.6"
-            />
+            {/* Draped ribbon body with dynamic swallowtail tip always at fingertips */}
+            {currentVisualHeight <= restingHeight + 4 ? (
+              // Resting folded tab when not placed
+              <path
+                d="M 8 12 L 14 26 L 25 20 L 32 26 L 30 12 Z"
+                fill="url(#ribbonGrad)"
+              />
+            ) : (
+              // Extended ribbon body with dynamic swallowtail tip at currentVisualHeight
+              <>
+                <path
+                  d={`
+                    M 8 12
+                    C 12 ${currentVisualHeight * 0.28}, 25 ${currentVisualHeight * 0.65}, 15 ${Math.max(12, currentVisualHeight - 28)}
+                    L 15 ${currentVisualHeight}
+                    L 25 ${Math.max(12, currentVisualHeight - 14)}
+                    L 34 ${currentVisualHeight}
+                    L 34 ${Math.max(12, currentVisualHeight - 28)}
+                    C 43 ${currentVisualHeight * 0.65}, 30 ${currentVisualHeight * 0.28}, 30 12
+                    Z
+                  `}
+                  fill="url(#ribbonGrad)"
+                />
+                {/* Satin sheen texture overlay */}
+                <path
+                  d={`
+                    M 8 12
+                    C 12 ${currentVisualHeight * 0.28}, 25 ${currentVisualHeight * 0.65}, 15 ${Math.max(12, currentVisualHeight - 28)}
+                    L 15 ${currentVisualHeight}
+                    L 25 ${Math.max(12, currentVisualHeight - 14)}
+                    L 34 ${currentVisualHeight}
+                    L 34 ${Math.max(12, currentVisualHeight - 28)}
+                    C 43 ${currentVisualHeight * 0.65}, 30 ${currentVisualHeight * 0.28}, 30 12
+                    Z
+                  `}
+                  fill="url(#ribbonShade)"
+                  opacity="0.6"
+                />
+              </>
+            )}
           </svg>
         </div>
 

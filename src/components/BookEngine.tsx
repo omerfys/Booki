@@ -162,8 +162,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
           swipeDistance: 35,
           showPageCorners: false,
           disableFlipByClick: true,
-          clickEventForward: true,
-          startZIndex: 30
+          clickEventForward: true
         });
 
         const pageElements = container.querySelectorAll<HTMLElement>('.book-flip-page');
@@ -784,11 +783,11 @@ export const BookEngine: React.FC<BookEngineProps> = ({
             {/* StPageFlip Interactive Book Shell */}
             <div className="relative overflow-visible">
               
-            {/* Spine Valley Center Shadow Gradient Overlay (z-31 sits on resting pages, under flipping page at z-35) */}
-            <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-14 pointer-events-none z-31 bg-gradient-to-r from-transparent via-black/40 to-transparent" />
+            {/* Spine Valley Center Shadow Gradient Overlay (z-2 sits on resting pages, under flipping page at z-5) */}
+            <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-14 pointer-events-none z-2 bg-gradient-to-r from-transparent via-black/40 to-transparent" />
 
             {/* Central Spine Binding Stitch Illusion */}
-            <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-[2px] bg-black/60 pointer-events-none z-31" />
+            <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-[2px] bg-black/60 pointer-events-none z-3" />
               {/* Physical Satin Ribbon Bookmark Component */}
               <RibbonBookmark
                 bookmarks={book.bookmarks}
@@ -819,7 +818,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
               {/* Page Container: Dual Page Spread */}
               <div
                 ref={containerRef}
-                className="flex items-center bg-[#18110b] rounded-sm select-none"
+                className="flex items-center bg-[#fbf9f5] rounded-sm select-none"
                 style={{ width: `${PAGE_WIDTH * 2}px`, height: `${PAGE_HEIGHT}px` }}
               >
                 {(() => {
@@ -844,13 +843,8 @@ export const BookEngine: React.FC<BookEngineProps> = ({
                     return (
                       <div
                         key={p.pageNumber}
-                        data-density="hard"
-                        className="book-flip-page relative w-[480px] h-[640px] overflow-hidden"
-                        style={{
-                          backgroundColor: paperBgColor,
-                          backfaceVisibility: 'hidden',
-                          WebkitBackfaceVisibility: 'hidden'
-                        }}
+                        className="book-flip-page relative w-[480px] h-[640px] bg-[#fbf9f5] overflow-hidden"
+                        style={{ backgroundColor: paperBgColor }}
                       >
                         <BookPageCanvas
                           page={p}
