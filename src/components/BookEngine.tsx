@@ -509,23 +509,78 @@ export const BookEngine: React.FC<BookEngineProps> = ({
     setHighlightDrag(prev => prev ? { ...prev, currentX: x, currentY: y } : null);
   };
 
+  const PAGE_LINE_HEIGHT = 38;
+  const LINE_BASELINE_OFFSET = 32;
+
+  // Calculate line-snapped highlight rectangles for neat text line marking
+  const getLineRectsForDrag = (
+    startX: number,
+    startY: number,
+    curX: number,
+    curY: number,
+    isRightPage: boolean,
+    color?: string
+  ) => {
+    const constraints = getConstraints(isRightPage);
+    const fromLine = Math.max(0, Math.round((startY - (constraints.marginTop + LINE_BASELINE_OFFSET)) / PAGE_LINE_HEIGHT));
+    const toLine = Math.max(0, Math.round((curY - (constraints.marginTop + LINE_BASELINE_OFFSET)) / PAGE_LINE_HEIGHT));
+
+    const startLine = Math.min(fromLine, toLine);
+    const endLine = Math.max(fromLine, toLine);
+    const minDragX = Math.min(startX, curX);
+    const maxDragX = Math.max(startX, curX);
+
+    const rects: Array<{ x: number; y: number; width: number; height: number; color: string }> = [];
+
+    for (let l = startLine; l <= endLine; l++) {
+      const lineBaseY = constraints.marginTop + LINE_BASELINE_OFFSET + l * PAGE_LINE_HEIGHT;
+      if (lineBaseY > constraints.height - constraints.marginBottom + 10) break;
+
+      let x1 = constraints.marginLeft;
+      let x2 = constraints.width - constraints.marginRight;
+
+      if (startLine === endLine) {
+        x1 = Math.max(constraints.marginLeft, minDragX);
+        x2 = Math.min(constraints.width - constraints.marginRight, maxDragX);
+      } else if (l === startLine) {
+        x1 = Math.max(constraints.marginLeft, minDragX);
+        x2 = constraints.width - constraints.marginRight;
+      } else if (l === endLine) {
+        x1 = constraints.marginLeft;
+        x2 = Math.min(constraints.width - constraints.marginRight, maxDragX);
+      }
+
+      const w = Math.max(16, x2 - x1);
+      rects.push({
+        x: x1,
+        y: lineBaseY - 24, // perfectly covers the text line!
+        width: w,
+        height: 28, // uniform line highlight height!
+        color: color || penColor || '#facc15'
+      });
+    }
+    return rects;
+  };
+
   const handlePointerUpPage = (e: React.PointerEvent<HTMLDivElement>, pageNum: number) => {
     if (instrument !== 'marker' || !highlightDrag || highlightDrag.pageNumber !== pageNum) return;
-    const minX = Math.min(highlightDrag.startX, highlightDrag.currentX);
-    const maxX = Math.max(highlightDrag.startX, highlightDrag.currentX);
-    const minY = Math.min(highlightDrag.startY, highlightDrag.currentY);
-    const maxY = Math.max(highlightDrag.startY, highlightDrag.currentY);
 
-    const width = Math.max(16, maxX - minX);
-    const height = Math.max(18, maxY - minY);
+    const isRight = pageNum % 2 !== 0;
+    const lineRects = getLineRectsForDrag(
+      highlightDrag.startX,
+      highlightDrag.startY,
+      highlightDrag.currentX,
+      highlightDrag.currentY,
+      isRight
+    );
 
     const targetPage = book.pages.find(p => p.pageNumber === pageNum);
-    if (targetPage) {
+    if (targetPage && lineRects.length > 0) {
       const newHighlight: PageHighlight = {
         id: `hl-${Date.now()}`,
         color: penColor || '#facc15',
         opacity: 0.45,
-        rects: [{ x: minX, y: minY, width, height }],
+        rects: lineRects.map(r => ({ x: r.x, y: r.y, width: r.width, height: r.height })),
         timestamp: Date.now()
       };
       const updated = {
@@ -736,15 +791,17 @@ export const BookEngine: React.FC<BookEngineProps> = ({
                           caretPosition={isCurrentWritingTarget && instrument !== 'marker' ? activeLayout.caretPosition : undefined}
                           animatingStrokeId={isCurrentWritingTarget ? animatingStrokeId : undefined}
                           animatingProgress={isCurrentWritingTarget ? animatingProgress : 1.0}
-                          activeHighlightRect={
+                          isMarkerActive={instrument === 'marker'}
+                          activeHighlightRects={
                             highlightDrag && highlightDrag.pageNumber === p.pageNumber
-                              ? {
-                                  x: Math.min(highlightDrag.startX, highlightDrag.currentX),
-                                  y: Math.min(highlightDrag.startY, highlightDrag.currentY),
-                                  width: Math.max(16, Math.abs(highlightDrag.currentX - highlightDrag.startX)),
-                                  height: Math.max(18, Math.abs(highlightDrag.currentY - highlightDrag.startY)),
-                                  color: penColor || '#facc15'
-                                }
+                              ? getLineRectsForDrag(
+                                  highlightDrag.startX,
+                                  highlightDrag.startY,
+                                  highlightDrag.currentX,
+                                  highlightDrag.currentY,
+                                  isRight,
+                                  penColor || '#facc15'
+                                )
                               : null
                           }
                           onPointerDownPage={e => handlePointerDownPage(e, p.pageNumber)}
@@ -755,12 +812,6 @@ export const BookEngine: React.FC<BookEngineProps> = ({
                               handlePageClick(isRight ? 'right' : 'left');
                             }
                           }}
-                        />
-                        {/* Page Turn Corner Zone (Click to flip with animation, drag/hold to bend) */}
-                        <div
-                          onClick={isRight ? handleNextPage : handlePrevPage}
-                          className={`absolute bottom-0 ${isRight ? 'right-0' : 'left-0'} w-20 h-20 cursor-pointer z-30`}
-                          title={isRight ? 'Turn to next page' : 'Turn to previous page'}
                         />
                       </div>
                     );

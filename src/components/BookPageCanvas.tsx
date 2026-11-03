@@ -26,7 +26,8 @@ interface BookPageCanvasProps {
   caretPosition?: { x: number; y: number; height: number };
   animatingStrokeId?: string;
   animatingProgress?: number;
-  activeHighlightRect?: { x: number; y: number; width: number; height: number; color: string } | null;
+  isMarkerActive?: boolean;
+  activeHighlightRects?: Array<{ x: number; y: number; width: number; height: number; color: string }> | null;
   onClickPage?: (e: React.MouseEvent<HTMLDivElement>) => void;
   onPointerDownPage?: (e: React.PointerEvent<HTMLDivElement>) => void;
   onPointerMovePage?: (e: React.PointerEvent<HTMLDivElement>) => void;
@@ -45,7 +46,8 @@ export const BookPageCanvas: React.FC<BookPageCanvasProps> = ({
   caretPosition,
   animatingStrokeId,
   animatingProgress = 1.0,
-  activeHighlightRect,
+  isMarkerActive,
+  activeHighlightRects,
   onClickPage,
   onPointerDownPage,
   onPointerMovePage,
@@ -81,7 +83,7 @@ export const BookPageCanvas: React.FC<BookPageCanvasProps> = ({
       dpr
     });
     // 1b. Render text highlights (Marker ile Vurgulanan Metinler)
-    if ((page.highlights && page.highlights.length > 0) || activeHighlightRect) {
+    if ((page.highlights && page.highlights.length > 0) || (activeHighlightRects && activeHighlightRects.length > 0)) {
       ctx.save();
       ctx.scale(dpr, dpr);
       ctx.globalCompositeOperation = 'multiply';
@@ -97,18 +99,19 @@ export const BookPageCanvas: React.FC<BookPageCanvasProps> = ({
         }
       }
 
-      // Live dragging highlight preview
-      if (activeHighlightRect) {
-        ctx.fillStyle = hexToRgba(activeHighlightRect.color || '#facc15', 0.45);
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(activeHighlightRect.x, activeHighlightRect.y, activeHighlightRect.width, activeHighlightRect.height, 3);
-        else ctx.rect(activeHighlightRect.x, activeHighlightRect.y, activeHighlightRect.width, activeHighlightRect.height);
-        ctx.fill();
+      // Live dragging snapped line highlight previews
+      if (activeHighlightRects) {
+        for (const r of activeHighlightRects) {
+          ctx.fillStyle = hexToRgba(r.color || '#facc15', 0.45);
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(r.x, r.y, r.width, r.height, 3);
+          else ctx.rect(r.x, r.y, r.width, r.height);
+          ctx.fill();
+        }
       }
 
       ctx.restore();
     }
-
     // 2. Render all handwritten strokes on this page
     renderPageStrokes(
       ctx,
@@ -154,12 +157,22 @@ export const BookPageCanvas: React.FC<BookPageCanvasProps> = ({
   return (
     <div
       onClick={onClickPage}
-      onPointerDown={onPointerDownPage}
+      onPointerDown={e => {
+        if (isMarkerActive) {
+          e.stopPropagation();
+        }
+        onPointerDownPage?.(e);
+      }}
+      onMouseDown={e => {
+        if (isMarkerActive) {
+          e.stopPropagation();
+        }
+      }}
       onPointerMove={onPointerMovePage}
       onPointerUp={onPointerUpPage}
-      className={`relative w-full h-full select-none cursor-text overflow-hidden ${
-        isActiveWritingPage ? 'ring-1 ring-amber-500/20' : ''
-      }`}
+      className={`relative w-full h-full select-none overflow-hidden ${
+        isMarkerActive ? 'cursor-crosshair' : 'cursor-text'
+      } ${isActiveWritingPage ? 'ring-1 ring-amber-500/20' : ''}`}
       style={{ width: `${width}px`, height: `${height}px` }}
     >
       <canvas ref={canvasRef} className="block w-full h-full" />
