@@ -29,15 +29,14 @@ const CharacterPreviewCanvas: React.FC<{
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = 280;
-    const height = 110;
+    const width = 240;
+    const height = 88;
     const dpr = window.devicePixelRatio || 1;
 
     canvas.width = width * dpr;
     canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
     // Render subtle background
     renderPaperBackground(ctx, {
       width,
@@ -45,32 +44,32 @@ const CharacterPreviewCanvas: React.FC<{
       type: 'cream-notebook',
       ruling: 'lined',
       isRightPage: true,
-      lineHeight: 28,
-      marginTop: 20,
-      marginBottom: 10,
-      marginLeft: 20,
-      marginRight: 20,
+      lineHeight: 25,
+      marginTop: 15,
+      marginBottom: 8,
+      marginLeft: 14,
+      marginRight: 14,
       dpr
     });
 
     // Render sample quote
     const content = generatePageStrokes(
-      character.sampleQuote.slice(0, 75) + '...',
+      character.sampleQuote.slice(0, 60) + '...',
       {
         ...character,
         style: {
           ...character.style,
-          size: 16,
-          lineHeight: 28
+          size: 14,
+          lineHeight: 25
         }
       },
       {
         width,
         height,
-        marginTop: 18,
-        marginBottom: 10,
-        marginLeft: 22,
-        marginRight: 20,
+        marginTop: 15,
+        marginBottom: 8,
+        marginLeft: 14,
+        marginRight: 14,
         isRightPage: true
       },
       instrument,
@@ -83,10 +82,13 @@ const CharacterPreviewCanvas: React.FC<{
   }, [character, instrument, penColor]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="w-full rounded-md shadow-xs border border-amber-900/30"
-    />
+    <div className="w-full overflow-hidden rounded-lg shadow-sm border border-amber-900/40 bg-[#f5edd9]">
+      <canvas
+        ref={canvasRef}
+        className="w-full block"
+        style={{ width: '100%', height: 'auto', display: 'block' }}
+      />
+    </div>
   );
 };
 

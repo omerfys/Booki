@@ -64,18 +64,25 @@ export default function App() {
   const currentBook = books.find(b => b.id === activeBookId) || books[0];
   const activeCharacter = getCharacterById(currentBook?.activeCharacterId || CHARACTERS[0].id);
 
-  // Debounced Autosave to IndexedDB
+  // Debounced Autosave to IndexedDB with fresh state guarantee (fixes page turn loss)
   const handleUpdateBook = useCallback((updated: Partial<Book>) => {
-    if (!currentBook) return;
-
     setIsSaving(true);
-    const newBook: Book = {
-      ...currentBook,
-      ...updated,
-      updatedAt: Date.now()
-    };
 
-    setBooks(prev => prev.map(b => (b.id === newBook.id ? newBook : b)));
+    let bookToSave: Book | null = null;
+
+    setBooks(prev => {
+      const active = prev.find(b => b.id === activeBookId) || prev[0];
+      if (!active) return prev;
+
+      const newBook: Book = {
+        ...active,
+        ...updated,
+        updatedAt: Date.now()
+      };
+      bookToSave = newBook;
+
+      return prev.map(b => (b.id === newBook.id ? newBook : b));
+    });
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -83,15 +90,17 @@ export default function App() {
     }
 
     saveTimerRef.current = window.setTimeout(async () => {
-      try {
-        await saveBookToDB(newBook);
-      } catch (err) {
-        console.error('Autosave error:', err);
-      } finally {
-        setIsSaving(false);
+      if (bookToSave) {
+        try {
+          await saveBookToDB(bookToSave);
+        } catch (err) {
+          console.error('Autosave error:', err);
+        } finally {
+          setIsSaving(false);
+        }
       }
-    }, 600);
-  }, [currentBook]);
+    }, 400);
+  }, [activeBookId]);
 
   // Handle Book Switching
   const handleSelectBook = async (id: string) => {
@@ -305,19 +314,22 @@ export default function App() {
       {/* 2. MAIN CENTER STAGE: 3D BOOK FLANKED BY DESK PEN STANDS */}
       {/* ======================================================== */}
       <main className="flex-1 flex items-center justify-center relative z-10 px-2 sm:px-6 overflow-hidden gap-3 lg:gap-8">
-        {/* Left Desk Stand: Pencil & Ballpoint Pen */}
-        <LeftDeskPenStand
-          currentInstrument={activeInstrument}
-          onSelectInstrument={inst => {
-            setActiveInstrument(inst);
-            handleUpdateBook({ instrument: inst });
-          }}
-          onSelectColor={col => {
-            setActiveColor(col);
-            handleUpdateBook({ penColor: col });
-          }}
-        />
-
+        {/* Left Desk Stand: Smoothly glides left when book opens, glides right when book closes */}
+        <div className={`transition-all duration-900 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          currentBook.isClosed ? 'translate-x-[140px] sm:translate-x-[180px] pointer-events-none' : 'translate-x-0'
+        }`}>
+          <LeftDeskPenStand
+            currentInstrument={activeInstrument}
+            onSelectInstrument={inst => {
+              setActiveInstrument(inst);
+              handleUpdateBook({ instrument: inst });
+            }}
+            onSelectColor={col => {
+              setActiveColor(col);
+              handleUpdateBook({ penColor: col });
+            }}
+          />
+        </div>
         {/* Center Stage: Interactive 3D Hardcover Book */}
         <BookEngine
           key={currentBook.id}
@@ -331,31 +343,35 @@ export default function App() {
           onUpdateBook={handleUpdateBook}
         />
 
-        {/* Right Desk Stand: Fountain Pen, Marker, Inks & Tuning Settings */}
-        <RightDeskPenStand
-          currentInstrument={activeInstrument}
-          currentColor={activeColor}
-          currentThickness={activeThickness}
-          currentWritingSpeed={activeWritingSpeed}
-          currentSize={activeSize}
-          onSelectInstrument={inst => {
-            setActiveInstrument(inst);
-            handleUpdateBook({ instrument: inst });
-          }}
-          onSelectColor={col => {
-            setActiveColor(col);
-            handleUpdateBook({ penColor: col });
-          }}
-          onChangeThickness={th => {
-            setActiveThickness(th);
-            handleUpdateBook({ penThickness: th });
-          }}
-          onChangeWritingSpeed={spd => {
-            setActiveWritingSpeed(spd);
-            handleUpdateBook({ writingSpeed: spd });
-          }}
-          onChangeSize={sz => setActiveSize(sz)}
-        />
+        {/* Right Desk Stand: Smoothly glides right when book opens, glides left when book closes */}
+        <div className={`transition-all duration-900 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          currentBook.isClosed ? '-translate-x-[140px] sm:-translate-x-[180px] pointer-events-none' : 'translate-x-0'
+        }`}>
+          <RightDeskPenStand
+            currentInstrument={activeInstrument}
+            currentColor={activeColor}
+            currentThickness={activeThickness}
+            currentWritingSpeed={activeWritingSpeed}
+            currentSize={activeSize}
+            onSelectInstrument={inst => {
+              setActiveInstrument(inst);
+              handleUpdateBook({ instrument: inst });
+            }}
+            onSelectColor={col => {
+              setActiveColor(col);
+              handleUpdateBook({ penColor: col });
+            }}
+            onChangeThickness={th => {
+              setActiveThickness(th);
+              handleUpdateBook({ penThickness: th });
+            }}
+            onChangeWritingSpeed={spd => {
+              setActiveWritingSpeed(spd);
+              handleUpdateBook({ writingSpeed: spd });
+            }}
+            onChangeSize={sz => setActiveSize(sz)}
+          />
+        </div>
       </main>
       {/* ======================================================== */}
       {/* MODALS */}
