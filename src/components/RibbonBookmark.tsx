@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Bookmark as BookmarkType } from '../types/book';
-import { Bookmark, Plus, Trash2, X, ChevronRight } from 'lucide-react';
+import { Bookmark, Plus, Trash2, X, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react';
 import { sound } from '../engine/audio/soundEngine';
 
 interface RibbonBookmarkProps {
@@ -25,7 +25,6 @@ export const RIBBON_COLORS = [
 export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
   bookmarks,
   currentPage,
-  bookWidth,
   bookHeight,
   onAddBookmark,
   onRemoveBookmark,
@@ -34,98 +33,215 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [selectedColor, setSelectedColor] = useState(RIBBON_COLORS[0].hex);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragHeight, setDragHeight] = useState<number | null>(null);
 
-  // Check if current spread has a bookmark
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Check if current spread has a bookmark placed on it
   const activeBookmark = bookmarks.find(
     b => b.pageNumber === currentPage || b.pageNumber === currentPage + 1
   );
 
+  const isPlaced = !!activeBookmark;
+
   const currentColor = activeBookmark
     ? activeBookmark.color
-    : RIBBON_COLORS[0].hex;
+    : (bookmarks[0]?.color || selectedColor);
 
   const colorMeta = RIBBON_COLORS.find(c => c.hex === currentColor) || RIBBON_COLORS[0];
 
+  const totalHeight = bookHeight + 48;
+  const restingHeight = 26; // Tucked above the spine when not placed
+
+  // Current visual height of the draped ribbon
+  const currentVisualHeight = isDragging && dragHeight !== null
+    ? dragHeight
+    : (isPlaced ? totalHeight : restingHeight);
+
+  // Interactive Click to Toggle Ribbon Placement on Current Page
+  const handleToggleRibbon = useCallback(() => {
+    sound.playRibbonSlide();
+    if (isPlaced && activeBookmark) {
+      onRemoveBookmark(activeBookmark.id);
+    } else {
+      onAddBookmark(currentPage, `Page ${currentPage}`, selectedColor);
+    }
+  }, [isPlaced, activeBookmark, currentPage, onAddBookmark, onRemoveBookmark, selectedColor]);
+
+  // Interactive Drag-and-Drop: pull ribbon down into book, or drag up to remove
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+
+    const startY = e.clientY;
+    const initialHeight = currentVisualHeight;
+
+    const onPointerMove = (moveEv: PointerEvent) => {
+      const deltaY = moveEv.clientY - startY;
+      const targetH = Math.max(restingHeight, Math.min(totalHeight, initialHeight + deltaY));
+      setDragHeight(targetH);
+    };
+
+    const onPointerUp = (upEv: PointerEvent) => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+
+      const finalDelta = upEv.clientY - startY;
+      const finalHeight = initialHeight + finalDelta;
+      setIsDragging(false);
+      setDragHeight(null);
+
+      // Threshold: if dragged more than halfway down, place ribbon; else remove
+      if (finalHeight > totalHeight * 0.45) {
+        if (!isPlaced) {
+          sound.playRibbonSlide();
+          onAddBookmark(currentPage, `Page ${currentPage}`, selectedColor);
+        }
+      } else {
+        if (isPlaced && activeBookmark) {
+          sound.playRibbonSlide();
+          onRemoveBookmark(activeBookmark.id);
+        }
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
   return (
     <>
-      {/* 1. Physical 3D Satin Ribbon Draped from Spine */}
+      {/* ======================================================== */}
+      {/* 1. PHYSICAL 3D SATIN RIBBON WITH ANIMATED DRAPE & PULL   */}
+      {/* ======================================================== */}
       <div 
-        className="absolute top-[-22px] left-1/2 transform -translate-x-1/2 pointer-events-none z-30 select-none"
-        style={{ width: '38px', height: `${bookHeight + 48}px` }}
+        ref={containerRef}
+        className={`absolute top-[-24px] left-1/2 transform -translate-x-1/2 z-30 select-none ${
+          isDragging ? 'cursor-grabbing' : 'cursor-grab'
+        }`}
+        style={{ width: '38px' }}
       >
-        <svg
-          width="38"
-          height={bookHeight + 48}
-          viewBox={`0 0 38 ${bookHeight + 48}`}
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="filter drop-shadow-md transition-all duration-500"
+        {/* Animated height container */}
+        <div
+          className={`relative overflow-hidden ${isDragging ? '' : 'transition-all duration-700 ease-[cubic-bezier(0.34,1.25,0.64,1)]'}`}
+          style={{ height: `${currentVisualHeight}px`, width: '38px' }}
         >
-          <defs>
-            <linearGradient id="ribbonGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor={colorMeta.hex} />
-              <stop offset="35%" stopColor={colorMeta.light} />
-              <stop offset="65%" stopColor={colorMeta.light} />
-              <stop offset="100%" stopColor={colorMeta.hex} />
-            </linearGradient>
-            <linearGradient id="ribbonShade" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="rgba(0,0,0,0.4)" />
-              <stop offset="15%" stopColor="rgba(0,0,0,0.0)" />
-              <stop offset="85%" stopColor="rgba(0,0,0,0.0)" />
-              <stop offset="100%" stopColor="rgba(0,0,0,0.3)" />
-            </linearGradient>
-          </defs>
+          <svg
+            width="38"
+            height={totalHeight}
+            viewBox={`0 0 38 ${totalHeight}`}
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className="filter drop-shadow-md"
+          >
+            <defs>
+              <linearGradient id="ribbonGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor={colorMeta.hex} />
+                <stop offset="35%" stopColor={colorMeta.light} />
+                <stop offset="65%" stopColor={colorMeta.light} />
+                <stop offset="100%" stopColor={colorMeta.hex} />
+              </linearGradient>
+              <linearGradient id="ribbonShade" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="rgba(0,0,0,0.45)" />
+                <stop offset="12%" stopColor="rgba(0,0,0,0.0)" />
+                <stop offset="85%" stopColor="rgba(0,0,0,0.0)" />
+                <stop offset="100%" stopColor="rgba(0,0,0,0.35)" />
+              </linearGradient>
+            </defs>
 
-          {/* Ribbon upper anchor tuck into spine */}
-          <path
-            d="M 6 0 L 32 0 L 30 18 L 8 18 Z"
-            fill="rgba(0,0,0,0.5)"
-          />
+            {/* Upper anchor tuck into book spine */}
+            <path
+              d="M 6 0 L 32 0 L 30 18 L 8 18 Z"
+              fill="rgba(0,0,0,0.55)"
+            />
 
-          {/* Draped main ribbon body with swallowtail tip at bottom */}
-          <path
-            d={`
-              M 8 12
-              C 12 ${bookHeight * 0.3}, 26 ${bookHeight * 0.6}, 16 ${bookHeight}
-              L 16 ${bookHeight + 36}
-              L 25 ${bookHeight + 24}
-              L 34 ${bookHeight + 36}
-              L 34 ${bookHeight}
-              C 44 ${bookHeight * 0.6}, 30 ${bookHeight * 0.3}, 30 12
-              Z
-            `}
-            fill="url(#ribbonGrad)"
-          />
+            {/* Draped ribbon body with swallowtail tip */}
+            <path
+              d={`
+                M 8 12
+                C 12 ${bookHeight * 0.3}, 26 ${bookHeight * 0.6}, 16 ${bookHeight}
+                L 16 ${bookHeight + 36}
+                L 25 ${bookHeight + 24}
+                L 34 ${bookHeight + 36}
+                L 34 ${bookHeight}
+                C 44 ${bookHeight * 0.6}, 30 ${bookHeight * 0.3}, 30 12
+                Z
+              `}
+              fill="url(#ribbonGrad)"
+            />
 
-          {/* Texture sheen overlay */}
-          <path
-            d={`
-              M 8 12
-              C 12 ${bookHeight * 0.3}, 26 ${bookHeight * 0.6}, 16 ${bookHeight}
-              L 16 ${bookHeight + 36}
-              L 25 ${bookHeight + 24}
-              L 34 ${bookHeight + 36}
-              L 34 ${bookHeight}
-              C 44 ${bookHeight * 0.6}, 30 ${bookHeight * 0.3}, 30 12
-              Z
-            `}
-            fill="url(#ribbonShade)"
-            opacity="0.6"
-          />
-        </svg>
+            {/* Satin sheen texture overlay */}
+            <path
+              d={`
+                M 8 12
+                C 12 ${bookHeight * 0.3}, 26 ${bookHeight * 0.6}, 16 ${bookHeight}
+                L 16 ${bookHeight + 36}
+                L 25 ${bookHeight + 24}
+                L 34 ${bookHeight + 36}
+                L 34 ${bookHeight}
+                C 44 ${bookHeight * 0.6}, 30 ${bookHeight * 0.3}, 30 12
+                Z
+              `}
+              fill="url(#ribbonShade)"
+              opacity="0.6"
+            />
+          </svg>
+        </div>
+
+        {/* Draggable Pull Handle (Bottom Swallowtail Tip when placed) */}
+        {isPlaced && (
+          <div
+            onPointerDown={handlePointerDown}
+            onClick={handleToggleRibbon}
+            className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-8 h-8 flex items-center justify-center cursor-pointer group"
+            title="Click or drag up to remove ribbon from this page"
+          >
+            <div className="p-1 rounded-full bg-black/50 border border-amber-500/40 opacity-0 group-hover:opacity-100 transition-opacity text-amber-200">
+              <ArrowUp className="w-3 h-3 animate-bounce" />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 2. Interactive Ribbon Tag Toggle at Top */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="absolute top-[-14px] left-1/2 transform -translate-x-1/2 z-40 px-3 py-1 bg-amber-950/80 hover:bg-amber-900 border border-amber-600/40 rounded-b-md text-amber-200 text-xs font-serif flex items-center gap-1.5 shadow-lg backdrop-blur-sm cursor-pointer transition-transform hover:scale-105"
-        title="Bookmark Manager"
-      >
-        <Bookmark className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30" />
-        <span>Ribbon ({bookmarks.length})</span>
-      </button>
+      {/* ======================================================== */}
+      {/* 2. TOP SPINE RIBBON CONTROL CHIP                         */}
+      {/* ======================================================== */}
+      <div className="absolute top-[-14px] left-1/2 transform -translate-x-1/2 z-40 flex items-center gap-1">
+        {/* Toggle Ribbon on Current Page Button */}
+        <button
+          onClick={handleToggleRibbon}
+          onPointerDown={!isPlaced ? handlePointerDown : undefined}
+          className={`px-2.5 py-1 rounded-b-md text-xs font-serif flex items-center gap-1.5 shadow-lg border backdrop-blur-sm cursor-pointer transition-all duration-300 ${
+            isPlaced
+              ? 'bg-amber-900/90 hover:bg-amber-800 border-amber-500/60 text-amber-100 ring-1 ring-amber-400/40'
+              : 'bg-black/60 hover:bg-amber-950/70 border-amber-800/40 text-amber-300/80 hover:text-amber-100'
+          }`}
+          title={isPlaced ? 'Click to remove ribbon from page' : 'Click or drag down to place ribbon on this page'}
+        >
+          <div 
+            className="w-2.5 h-3.5 rounded-xs shadow-xs shrink-0" 
+            style={{ backgroundColor: colorMeta.hex }} 
+          />
+          <span className="text-[11px] font-medium hidden sm:inline">
+            {isPlaced ? 'Ribbon Placed' : 'Place Ribbon'}
+          </span>
+          {!isPlaced && <ArrowDown className="w-3 h-3 text-amber-400/70" />}
+        </button>
 
-      {/* 3. Bookmark Manager Modal / Flyout */}
+        {/* Bookmark Manager Flyout Toggle */}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="p-1 bg-black/60 hover:bg-amber-950/70 border border-amber-800/40 rounded-b-md text-amber-300/80 hover:text-amber-100 shadow-lg cursor-pointer"
+          title="All Bookmarked Pages"
+        >
+          <Bookmark className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 3. BOOKMARK MANAGER MODAL / FLYOUT                       */}
+      {/* ======================================================== */}
       {isOpen && (
         <div className="absolute top-12 left-1/2 transform -translate-x-1/2 z-50 w-80 bg-[#1e1713]/95 border border-amber-800/50 rounded-xl p-4 shadow-2xl backdrop-blur-md text-amber-100 font-serif">
           <div className="flex items-center justify-between pb-3 border-b border-amber-900/60 mb-3">
@@ -141,7 +257,7 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
             </button>
           </div>
 
-          {/* Quick Add Bookmark for Current Page */}
+          {/* Quick Place Bookmark for Current Page */}
           <div className="mb-4 bg-amber-950/40 p-2.5 rounded-lg border border-amber-800/30">
             <div className="text-xs text-amber-300/80 mb-2">Place Ribbon on Page {currentPage}:</div>
             <div className="flex gap-2 mb-2">
@@ -188,7 +304,7 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
           <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
             {bookmarks.length === 0 ? (
               <div className="text-center py-4 text-xs text-amber-400/50 italic">
-                No ribbons placed yet. Click "Place" to bookmark this page.
+                No ribbons placed yet. Click "Place Ribbon" to bookmark this page.
               </div>
             ) : (
               bookmarks.map(b => (
@@ -218,6 +334,7 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => {
+                        sound.playRibbonSlide();
                         onJumpToPage(b.pageNumber);
                         setIsOpen(false);
                       }}
