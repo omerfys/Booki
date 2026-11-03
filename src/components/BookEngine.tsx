@@ -187,33 +187,76 @@ export const BookEngine: React.FC<BookEngineProps> = ({
     };
   }, [book.id, book.isClosed, book.pages.length]);
 
-  // Turn to Next Page - ALWAYS animated via StPageFlip!
-  const handleNextPage = useCallback(() => {
+  // Perform the exact same 3D paper bending, diagonal curling, and folding animation as mouse drag
+  const animateCornerCurlFlip = useCallback((direction: 'next' | 'prev') => {
+    sound.playPageTurn();
+
+    const distEl = (containerRef.current?.querySelector('.stf__block') as HTMLElement | null) || containerRef.current;
+    if (distEl && pageFlipRef.current) {
+      const rect = distEl.getBoundingClientRect();
+      const isNext = direction === 'next';
+
+      const startX = isNext ? (rect.left + rect.width - 25) : (rect.left + 25);
+      const startY = rect.top + rect.height - 25;
+      const targetX = isNext ? (rect.left + rect.width * 0.35) : (rect.left + rect.width * 0.65);
+      const targetY = rect.top + rect.height * 0.82;
+
+      // 1. Mouse down on distEl
+      distEl.dispatchEvent(new MouseEvent('mousedown', {
+        clientX: startX,
+        clientY: startY,
+        bubbles: true,
+        cancelable: true,
+        view: window
+      }));
+      // 2. Animate a natural 3D curl trajectory across the page over 160ms
+      const steps = 10;
+      let s = 1;
+      const stepInterval = setInterval(() => {
+        const frac = s / steps;
+        const curX = startX + (targetX - startX) * frac;
+        const curY = startY + (targetY - startY) * frac - Math.sin(frac * Math.PI) * 45;
+
+        window.dispatchEvent(new MouseEvent('mousemove', {
+          clientX: curX,
+          clientY: curY,
+          bubbles: true,
+          cancelable: true,
+          view: window
+        }));
+
+        s++;
+        if (s > steps) {
+          clearInterval(stepInterval);
+          // 3. Mouse up: StPageFlip's internal physics engine (stopMove) completes the 3D flip smoothly!
+          window.dispatchEvent(new MouseEvent('mouseup', {
+            clientX: targetX,
+            clientY: targetY,
+            bubbles: true,
+            cancelable: true,
+            view: window
+          }));
+        }
+      }, 16);
+      return;
+    }
+
+    // Fallback if container not found
     if (pageFlipRef.current) {
-      sound.playPageTurn();
       try {
-        pageFlipRef.current.flipNext('bottom');
-      } catch {
-        try {
-          pageFlipRef.current.turnToNextPage();
-        } catch {}
-      }
+        if (direction === 'next') pageFlipRef.current.flipNext('bottom');
+        else pageFlipRef.current.flipPrev('bottom');
+      } catch {}
     }
   }, []);
 
-  // Turn to Prev Page - ALWAYS animated via StPageFlip!
+  const handleNextPage = useCallback(() => {
+    animateCornerCurlFlip('next');
+  }, [animateCornerCurlFlip]);
+
   const handlePrevPage = useCallback(() => {
-    if (pageFlipRef.current) {
-      sound.playPageTurn();
-      try {
-        pageFlipRef.current.flipPrev('bottom');
-      } catch {
-        try {
-          pageFlipRef.current.turnToPrevPage();
-        } catch {}
-      }
-    }
-  }, []);
+    animateCornerCurlFlip('prev');
+  }, [animateCornerCurlFlip]);
   // Keyboard Navigation: Arrow Left/Right
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
