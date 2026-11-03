@@ -130,21 +130,14 @@ export const BookEngine: React.FC<BookEngineProps> = ({
     animatorRef.current?.setSpeed(writingSpeed);
   }, [writingSpeed]);
 
-  // Initialize or reconfigure StPageFlip
+  // Initialize or reconfigure StPageFlip persistently (never destroyed on open/close!)
   useEffect(() => {
-    if (book.isClosed) {
-      if (pageFlipRef.current) {
-        pageFlipRef.current.destroy();
-        pageFlipRef.current = null;
-      }
-      return;
-    }
-
     const container = containerRef.current;
     if (!container) return;
 
-    // Small delay to ensure elements are mounted in DOM
+    let isMounted = true;
     const timer = setTimeout(() => {
+      if (!isMounted) return;
       try {
         if (pageFlipRef.current) {
           pageFlipRef.current.destroy();
@@ -169,7 +162,8 @@ export const BookEngine: React.FC<BookEngineProps> = ({
           swipeDistance: 35,
           showPageCorners: false,
           disableFlipByClick: true,
-          clickEventForward: true
+          clickEventForward: true,
+          startZIndex: 30
         });
 
         const pageElements = container.querySelectorAll<HTMLElement>('.book-flip-page');
@@ -191,6 +185,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
     }, 50);
 
     return () => {
+      isMounted = false;
       clearTimeout(timer);
       if (pageFlipRef.current) {
         try {
@@ -199,8 +194,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
         pageFlipRef.current = null;
       }
     };
-  }, [book.id, book.isClosed, book.pages.length]);
-
+  }, [book.id, book.pages.length]);
   // Perform the exact same 3D paper bending, diagonal curling, and folding animation as mouse drag
   const animateCornerCurlFlip = useCallback((direction: 'next' | 'prev') => {
     if (isFlippingRef.current) return;
@@ -637,8 +631,9 @@ export const BookEngine: React.FC<BookEngineProps> = ({
       {/* ======================================================== */}
       {/* 1. CLOSED BOOK 3D STATE (Realistic Hardcover on Wooden Desk) */}
       {/* ======================================================== */}
-      {book.isClosed ? (
-        <div className="perspective-book flex items-center justify-center py-6 select-none">
+      {/* 1. CLOSED BOOK 3D STATE & ROTATING COVER OVERLAY */}
+      {(book.isClosed || isOpening) && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 perspective-book flex items-center justify-center select-none z-40 pointer-events-auto">
           {/* Symmetrical Book Shell: Expands smoothly from 480px to 960px right where it sits! */}
           <div
             onClick={!isOpening ? handleOpenBook : undefined}
@@ -764,11 +759,14 @@ export const BookEngine: React.FC<BookEngineProps> = ({
             </div>
           </div>
         </div>
-      ) : (
-        /* ======================================================== */
-        /* 2. OPEN TWO-PAGE SPREAD STATE */
-        /* ======================================================== */
-        <div className="relative flex flex-col items-center py-2">
+      )}
+
+      {/* ======================================================== */}
+      {/* 2. OPEN TWO-PAGE SPREAD STATE (Persistent in DOM, zero flicker!) */}
+      {/* ======================================================== */}
+      <div className={`relative flex flex-col items-center py-2 transition-opacity duration-300 ${
+        book.isClosed && !isOpening ? 'opacity-0 pointer-events-none' : 'opacity-100'
+      }`}>
           
           {/* Main Book Structure with Deckled Stacked Edge Depth */}
           <div className="relative flex items-center shadow-[0_45px_90px_rgba(0,0,0,0.85),0_15px_30px_rgba(0,0,0,0.6)] rounded-sm">
@@ -786,12 +784,11 @@ export const BookEngine: React.FC<BookEngineProps> = ({
             {/* StPageFlip Interactive Book Shell */}
             <div className="relative overflow-visible">
               
-              {/* Spine Valley Center Shadow Gradient Overlay */}
-              <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-14 pointer-events-none z-20 bg-gradient-to-r from-transparent via-black/40 to-transparent" />
+            {/* Spine Valley Center Shadow Gradient Overlay (z-31 sits on resting pages, under flipping page at z-35) */}
+            <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-14 pointer-events-none z-31 bg-gradient-to-r from-transparent via-black/40 to-transparent" />
 
-              {/* Central Spine Binding Stitch Illusion */}
-              <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-[2px] bg-black/60 pointer-events-none z-25" />
-
+            {/* Central Spine Binding Stitch Illusion */}
+            <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-[2px] bg-black/60 pointer-events-none z-31" />
               {/* Physical Satin Ribbon Bookmark Component */}
               <RibbonBookmark
                 bookmarks={book.bookmarks}
@@ -837,11 +834,23 @@ export const BookEngine: React.FC<BookEngineProps> = ({
                   return pagesToRender.map((p, idx) => {
                     const isRight = idx % 2 !== 0;
                     const isCurrentWritingTarget = p.pageNumber === activeTargetPage.pageNumber;
+                    const paperBgColor =
+                      book.paperType === 'aged-vintage' ? '#e9d6b2' :
+                      book.paperType === 'yellowed' ? '#f2e4c4' :
+                      book.paperType === 'clean-white' ? '#fbfbfa' :
+                      book.paperType === 'fine-textured' ? '#f7f3ea' :
+                      book.paperType === 'lightly-rough' ? '#f4eee1' : '#f5edd9';
 
                     return (
                       <div
                         key={p.pageNumber}
-                        className="book-flip-page relative w-[480px] h-[640px] bg-[#fbf9f5] overflow-hidden"
+                        data-density="hard"
+                        className="book-flip-page relative w-[480px] h-[640px] overflow-hidden"
+                        style={{
+                          backgroundColor: paperBgColor,
+                          backfaceVisibility: 'hidden',
+                          WebkitBackfaceVisibility: 'hidden'
+                        }}
                       >
                         <BookPageCanvas
                           page={p}
@@ -951,7 +960,6 @@ export const BookEngine: React.FC<BookEngineProps> = ({
           </div>
 
         </div>
-      )}
     </div>
   );
 };

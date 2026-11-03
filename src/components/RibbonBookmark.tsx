@@ -116,7 +116,7 @@ export const RibbonBookmark: React.FC<RibbonBookmarkProps> = ({
         ref={containerRef}
         onClick={handleToggleRibbon}
         onPointerDown={handlePointerDown}
-        className={`absolute top-[-26px] left-1/2 transform -translate-x-1/2 z-35 select-none cursor-pointer group ${
+        className={`absolute top-[-26px] left-1/2 transform -translate-x-1/2 z-32 select-none cursor-pointer group ${
           isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:brightness-110'
         }`}
         style={{ width: '38px' }}

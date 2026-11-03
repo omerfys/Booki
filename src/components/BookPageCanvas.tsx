@@ -173,7 +173,16 @@ export const BookPageCanvas: React.FC<BookPageCanvasProps> = ({
       className={`relative w-full h-full select-none overflow-hidden ${
         isMarkerActive ? 'cursor-crosshair' : 'cursor-text'
       } ${isActiveWritingPage ? 'ring-1 ring-amber-500/20' : ''}`}
-      style={{ width: `${width}px`, height: `${height}px` }}
+      style={{
+        width: `${width}px`,
+        height: `${height}px`,
+        backgroundColor:
+          paperType === 'aged-vintage' ? '#e9d6b2' :
+          paperType === 'yellowed' ? '#f2e4c4' :
+          paperType === 'clean-white' ? '#fbfbfa' :
+          paperType === 'fine-textured' ? '#f7f3ea' :
+          paperType === 'lightly-rough' ? '#f4eee1' : '#f5edd9'
+      }}
     >
       <canvas ref={canvasRef} className="block w-full h-full" />
     </div>

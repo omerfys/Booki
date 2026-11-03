@@ -36,6 +36,26 @@
   border-radius: 4px;
 }
 
+/* Hard physical opaque paper leaves for StPageFlip - zero transparency bleed */
+.stf__item {
+  background-color: #f5edd9;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  transform-style: preserve-3d;
+}
+
+.book-flip-page {
+  background-color: #f5edd9;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  transform-style: preserve-3d;
+}
+
+.book-flip-page canvas {
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+}
+
 /* Custom wooden desk grain & ambient room lighting */
 .desk-surface {
   background: 
