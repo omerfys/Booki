@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-serif: 'Cormorant Garamond', Georgia, serif;
+    --font-display: 'Cinzel', serif;
+    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
+  }
+}
+
+/* 3D Perspective and Book depth */
+.perspective-book {
+  perspective: 2400px;
+  perspective-origin: 50% 50%;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+/* StPageFlip custom overrides & smooth shading */
+.stf__wrapper {
+  margin: 0 auto;
+}
+
+.stf__parent {
+  box-shadow: 0 35px 70px -15px rgba(0, 0, 0, 0.7),
+              0 15px 30px -10px rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+}
+
+/* Custom wooden desk grain & ambient room lighting */
+.desk-surface {
+  background: 
+    radial-gradient(circle at 50% 20%, rgba(255, 230, 190, 0.08) 0%, transparent 60%),
+    radial-gradient(circle at 15% 85%, rgba(0, 0, 0, 0.4) 0%, transparent 50%),
+    radial-gradient(circle at 85% 85%, rgba(0, 0, 0, 0.4) 0%, transparent 50%),
+    linear-gradient(135deg, #1c1510 0%, #16110d 50%, #0e0a08 100%);
+}
+
+/* Custom subtle parchment and grain patterns */
+.wood-texture {
+  background-image: 
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.015) 0px, rgba(255, 255, 255, 0.015) 1px, transparent 1px, transparent 12px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.03) 0px, rgba(0, 0, 0, 0.03) 2px, transparent 2px, transparent 18px);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.6);
+}

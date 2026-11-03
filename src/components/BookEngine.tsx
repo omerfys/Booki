@@ -1,0 +1,739 @@
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { PageFlip } from 'page-flip';
+import { Book, CharacterProfile, WritingInstrument } from '../types/book';
+import { BookPageCanvas } from './BookPageCanvas';
+import { RibbonBookmark } from './RibbonBookmark';
+import { generatePageStrokes, PageLayoutConstraints } from '../engine/handwriting/strokeGenerator';
+import { StrokeAnimator } from '../engine/handwriting/strokeAnimator';
+import { ChevronLeft, ChevronRight, BookOpen, Lock, Undo, Redo } from 'lucide-react';
+import { sound } from '../engine/audio/soundEngine';
+
+interface BookEngineProps {
+  book: Book;
+  activeCharacter: CharacterProfile;
+  instrument: WritingInstrument;
+  penColor: string;
+  penThickness: number;
+  writingSpeed: number;
+  fontSize: number;
+  onUpdateBook: (updated: Partial<Book>) => void;
+  onPageChange?: (newPage: number) => void;
+}
+
+const PAGE_WIDTH = 480;
+const PAGE_HEIGHT = 640;
+
+export const BookEngine: React.FC<BookEngineProps> = ({
+  book,
+  activeCharacter,
+  instrument,
+  penColor,
+  penThickness,
+  writingSpeed,
+  fontSize,
+  onUpdateBook,
+  onPageChange
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const pageFlipRef = useRef<PageFlip | null>(null);
+  const hiddenInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const animatorRef = useRef<StrokeAnimator | null>(null);
+
+  const [activePageIndex, setActivePageIndex] = useState<number>(book.currentPage || 1);
+  const [activeWritingSide, setActiveWritingSide] = useState<'left' | 'right'>('right');
+  const [animatingStrokeId, setAnimatingStrokeId] = useState<string | undefined>(undefined);
+  const [animatingProgress, setAnimatingProgress] = useState<number>(1.0);
+  const [undoStack, setUndoStack] = useState<string[]>([]);
+  const [redoStack, setRedoStack] = useState<string[]>([]);
+  const [isOpeningTransition, setIsOpeningTransition] = useState(false);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const updateScale = () => {
+      const availWidth = window.innerWidth - 32;
+      const availHeight = window.innerHeight - 200;
+      const scaleX = availWidth / (PAGE_WIDTH * 2 + 60);
+      const scaleY = availHeight / (PAGE_HEIGHT + 40);
+      const target = Math.min(1.0, Math.max(0.45, Math.min(scaleX, scaleY)));
+      setScale(target);
+    };
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, []);
+
+  // Layout constraints for page writing
+  const getConstraints = useCallback((isRightPage: boolean): PageLayoutConstraints => {
+    return {
+      width: PAGE_WIDTH,
+      height: PAGE_HEIGHT,
+      marginTop: 65,
+      marginBottom: 55,
+      marginLeft: isRightPage ? 55 : 45,
+      marginRight: isRightPage ? 45 : 55,
+      isRightPage
+    };
+  }, []);
+
+  // Determine current left and right page objects
+  const leftPageNumber = activePageIndex % 2 === 0 ? activePageIndex - 1 : activePageIndex;
+  const rightPageNumber = leftPageNumber + 1;
+
+  const leftPage = book.pages.find(p => p.pageNumber === leftPageNumber) || {
+    pageNumber: leftPageNumber,
+    strokes: [],
+    rawText: ''
+  };
+
+  const rightPage = book.pages.find(p => p.pageNumber === rightPageNumber) || {
+    pageNumber: rightPageNumber,
+    strokes: [],
+    rawText: ''
+  };
+
+  const activeTargetPage = activeWritingSide === 'left' ? leftPage : rightPage;
+  const activeIsRight = activeWritingSide === 'right';
+
+  // Initialize Stroke Animator
+  useEffect(() => {
+    animatorRef.current = new StrokeAnimator(
+      state => {
+        setAnimatingStrokeId(state.currentStrokeId || undefined);
+        setAnimatingProgress(state.progress);
+      },
+      () => {
+        setAnimatingStrokeId(undefined);
+        setAnimatingProgress(1.0);
+      }
+    );
+
+    return () => {
+      animatorRef.current?.stop();
+    };
+  }, []);
+
+  // Update animator speed
+  useEffect(() => {
+    animatorRef.current?.setSpeed(writingSpeed);
+  }, [writingSpeed]);
+
+  // Initialize or reconfigure StPageFlip
+  useEffect(() => {
+    if (book.isClosed) {
+      if (pageFlipRef.current) {
+        pageFlipRef.current.destroy();
+        pageFlipRef.current = null;
+      }
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Small delay to ensure elements are mounted in DOM
+    const timer = setTimeout(() => {
+      try {
+        if (pageFlipRef.current) {
+          pageFlipRef.current.destroy();
+          pageFlipRef.current = null;
+        }
+
+        const pf = new PageFlip(container, {
+          width: PAGE_WIDTH,
+          height: PAGE_HEIGHT,
+          size: 'fixed',
+          minWidth: 320,
+          maxWidth: 540,
+          minHeight: 460,
+          maxHeight: 720,
+          drawShadow: true,
+          flippingTime: 750,
+          usePortrait: false,
+          maxShadowOpacity: 0.6,
+          showCover: false,
+          mobileScrollSupport: false,
+          useMouseEvents: true,
+          swipeDistance: 35,
+          showPageCorners: true,
+          disableFlipByClick: true,
+          clickEventForward: true
+        });
+
+        const pageElements = container.querySelectorAll<HTMLElement>('.book-flip-page');
+        if (pageElements.length >= 2) {
+          pf.loadFromHTML(pageElements);
+          pf.on('flip', e => {
+            sound.playPageTurn();
+            const newIndex = (e.data as number) + 1;
+            setActivePageIndex(newIndex);
+            onPageChange?.(newIndex);
+            onUpdateBook({ currentPage: newIndex });
+          });
+          pageFlipRef.current = pf;
+        }
+      } catch (err) {
+        console.warn('PageFlip init:', err);
+      }
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      if (pageFlipRef.current) {
+        try {
+          pageFlipRef.current.destroy();
+        } catch {}
+        pageFlipRef.current = null;
+      }
+    };
+  }, [book.id, book.isClosed, book.pages.length]);
+
+  // Turn to Next Page
+  const handleNextPage = useCallback(() => {
+    sound.playPageTurn();
+    if (pageFlipRef.current) {
+      try {
+        pageFlipRef.current.flipNext('bottom');
+        return;
+      } catch {}
+    }
+    const nextIdx = Math.min(book.pages.length + 1, activePageIndex + 2);
+    setActivePageIndex(nextIdx);
+    onPageChange?.(nextIdx);
+    onUpdateBook({ currentPage: nextIdx });
+  }, [activePageIndex, book.pages.length, onPageChange, onUpdateBook]);
+
+  // Turn to Prev Page
+  const handlePrevPage = useCallback(() => {
+    sound.playPageTurn();
+    if (pageFlipRef.current) {
+      try {
+        pageFlipRef.current.flipPrev('bottom');
+        return;
+      } catch {}
+    }
+    const prevIdx = Math.max(1, activePageIndex - 2);
+    setActivePageIndex(prevIdx);
+    onPageChange?.(prevIdx);
+    onUpdateBook({ currentPage: prevIdx });
+  }, [activePageIndex, onPageChange, onUpdateBook]);
+  // Keyboard Navigation: Arrow Left/Right
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (book.isClosed) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        if (e.target !== hiddenInputRef.current) return;
+      }
+
+      if (e.key === 'ArrowRight' && (e.altKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleNextPage();
+      } else if (e.key === 'ArrowLeft' && (e.altKey || e.ctrlKey)) {
+        e.preventDefault();
+        handlePrevPage();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [book.isClosed, handleNextPage, handlePrevPage]);
+
+  // Focus hidden input when user clicks on a page to write
+  const handlePageClick = (side: 'left' | 'right') => {
+    setActiveWritingSide(side);
+    hiddenInputRef.current?.focus();
+  };
+
+  // Live Typing Handler: converts keyboard input to handwritten strokes
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newText = e.target.value;
+    const oldText = activeTargetPage.rawText;
+
+    // Push to undo stack
+    setUndoStack(prev => [...prev.slice(-25), oldText]);
+    setRedoStack([]);
+
+    // Character profile with current user adjustments
+    const currentProfile: CharacterProfile = {
+      ...activeCharacter,
+      style: {
+        ...activeCharacter.style,
+        size: fontSize,
+        lineHeight: 38
+      }
+    };
+
+    const constraints = getConstraints(activeIsRight);
+
+    // Generate strokes with controlled randomization
+    const generated = generatePageStrokes(
+      newText,
+      currentProfile,
+      constraints,
+      instrument,
+      penColor,
+      penThickness,
+      book.penOpacity || 0.95,
+      activeTargetPage.pageNumber * 50
+    );
+
+    // Handle automatic page continuation when full
+    if (generated.isFull && generated.overflowText) {
+      const remainingTextOnThisPage = newText.slice(0, newText.length - generated.overflowText.length);
+      const nextPageNum = activeTargetPage.pageNumber + 1;
+
+      // Update current page
+      const updatedThisPage = {
+        ...activeTargetPage,
+        rawText: remainingTextOnThisPage,
+        strokes: generated.strokes,
+        lastEdited: Date.now()
+      };
+
+      // Create or update next page
+      const nextConstraints = getConstraints(!activeIsRight);
+      const nextPageGenerated = generatePageStrokes(
+        generated.overflowText,
+        currentProfile,
+        nextConstraints,
+        instrument,
+        penColor,
+        penThickness,
+        book.penOpacity || 0.95,
+        nextPageNum * 50
+      );
+
+      const updatedNextPage = {
+        pageNumber: nextPageNum,
+        rawText: generated.overflowText,
+        strokes: nextPageGenerated.strokes,
+        lastEdited: Date.now()
+      };
+
+      const newPages = [...book.pages];
+      const thisIdx = newPages.findIndex(p => p.pageNumber === activeTargetPage.pageNumber);
+      if (thisIdx >= 0) newPages[thisIdx] = updatedThisPage;
+      else newPages.push(updatedThisPage);
+
+      const nextIdx = newPages.findIndex(p => p.pageNumber === nextPageNum);
+      if (nextIdx >= 0) newPages[nextIdx] = updatedNextPage;
+      else newPages.push(updatedNextPage);
+
+      onUpdateBook({ pages: newPages });
+
+      // Automatically advance page
+      setTimeout(() => {
+        handleNextPage();
+      }, 200);
+
+      return;
+    }
+
+    // Normal page update
+    const updatedPage: typeof activeTargetPage = {
+      ...activeTargetPage,
+      rawText: newText,
+      strokes: generated.strokes,
+      lastEdited: Date.now()
+    };
+
+    const newPages = [...book.pages];
+    const idx = newPages.findIndex(p => p.pageNumber === activeTargetPage.pageNumber);
+    if (idx >= 0) {
+      newPages[idx] = updatedPage;
+    } else {
+      newPages.push(updatedPage);
+    }
+
+    onUpdateBook({ pages: newPages });
+
+    // Animate newly penned stroke if typing forward
+    if (newText.length > oldText.length && generated.strokes.length > 0) {
+      sound.playWritingSound(instrument);
+      const lastStroke = generated.strokes[generated.strokes.length - 1];
+      animatorRef.current?.animateStrokes([lastStroke]);
+    }
+  };
+
+  // Undo / Redo
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setRedoStack(r => [...r, activeTargetPage.rawText]);
+    setUndoStack(u => u.slice(0, -1));
+
+    const currentProfile: CharacterProfile = {
+      ...activeCharacter,
+      style: { ...activeCharacter.style, size: fontSize, lineHeight: 38 }
+    };
+    const generated = generatePageStrokes(
+      prev,
+      currentProfile,
+      getConstraints(activeIsRight),
+      instrument,
+      penColor,
+      penThickness,
+      book.penOpacity,
+      activeTargetPage.pageNumber * 50
+    );
+
+    const updated = { ...activeTargetPage, rawText: prev, strokes: generated.strokes };
+    const newPages = book.pages.map(p => (p.pageNumber === updated.pageNumber ? updated : p));
+    onUpdateBook({ pages: newPages });
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setUndoStack(u => [...u, activeTargetPage.rawText]);
+    setRedoStack(r => r.slice(0, -1));
+
+    const currentProfile: CharacterProfile = {
+      ...activeCharacter,
+      style: { ...activeCharacter.style, size: fontSize, lineHeight: 38 }
+    };
+    const generated = generatePageStrokes(
+      next,
+      currentProfile,
+      getConstraints(activeIsRight),
+      instrument,
+      penColor,
+      penThickness,
+      book.penOpacity,
+      activeTargetPage.pageNumber * 50
+    );
+
+    const updated = { ...activeTargetPage, rawText: next, strokes: generated.strokes };
+    const newPages = book.pages.map(p => (p.pageNumber === updated.pageNumber ? updated : p));
+    onUpdateBook({ pages: newPages });
+  };
+
+  // Caret layout for active writing page
+  const activeConstraints = getConstraints(activeIsRight);
+  const activeLayout = generatePageStrokes(
+    activeTargetPage.rawText,
+    { ...activeCharacter, style: { ...activeCharacter.style, size: fontSize, lineHeight: 38 } },
+    activeConstraints,
+    instrument,
+    penColor,
+    penThickness,
+    book.penOpacity,
+    activeTargetPage.pageNumber * 50
+  );
+
+  // Animate opening the book
+  const handleOpenBook = () => {
+    sound.playBookCover(false);
+    setIsOpeningTransition(true);
+    setTimeout(() => {
+      onUpdateBook({ isClosed: false });
+      setIsOpeningTransition(false);
+    }, 600);
+  };
+
+  // Close the book
+  const handleCloseBook = () => {
+    sound.playBookCover(true);
+    onUpdateBook({ isClosed: true });
+  };
+
+  // Foil style generator for cover embossing
+  const getFoilStyle = (type: string) => {
+    switch (type) {
+      case 'gold':
+        return 'text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] bg-gradient-to-b from-amber-200 via-amber-400 to-amber-600 bg-clip-text text-transparent';
+      case 'silver':
+        return 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] bg-gradient-to-b from-white via-slate-200 to-slate-400 bg-clip-text text-transparent';
+      case 'bronze':
+        return 'text-amber-600 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] bg-gradient-to-b from-amber-400 via-amber-600 to-amber-800 bg-clip-text text-transparent';
+      default:
+        return 'text-black/60 drop-shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]';
+    }
+  };
+
+  return (
+    <div className="relative flex flex-col items-center justify-center select-none" style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}>
+      
+      {/* Hidden Textarea for capturing physical keyboard typing */}
+      {!book.isClosed && (
+        <textarea
+          ref={hiddenInputRef}
+          value={activeTargetPage.rawText}
+          onChange={handleTextChange}
+          className="absolute -top-[9999px] -left-[9999px] opacity-0 pointer-events-none w-1 h-1"
+          autoFocus
+        />
+      )}
+
+      {/* ======================================================== */}
+      {/* 1. CLOSED BOOK 3D STATE (Realistic Hardcover on Wooden Desk) */}
+      {/* ======================================================== */}
+      {book.isClosed ? (
+        <div className="perspective-book flex flex-col items-center py-8">
+          <div
+            onClick={handleOpenBook}
+            className={`relative w-[340px] sm:w-[420px] h-[480px] sm:h-[580px] rounded-r-2xl rounded-l-md shadow-[0_35px_70px_rgba(0,0,0,0.85),0_10px_20px_rgba(0,0,0,0.6)] cursor-pointer transition-all duration-700 preserve-3d flex flex-col justify-between p-8 border-r-8 border-b-8 border-black/50 group ${
+              isOpeningTransition ? '-rotate-y-45 scale-95 opacity-50' : 'hover:scale-[1.01]'
+            }`}
+            style={{ backgroundColor: book.coverColor }}
+          >
+            {/* Hardcover Material Grain / Texture */}
+            <div className="absolute inset-0 opacity-40 mix-blend-overlay pointer-events-none wood-texture" />
+
+            {/* Spine Hinge Groove Shadow */}
+            <div className="absolute top-0 left-0 bottom-0 w-8 bg-gradient-to-r from-black/60 via-black/25 to-transparent" />
+            <div className="absolute top-0 left-6 bottom-0 w-[2px] bg-black/40 shadow-[0_0_5px_rgba(0,0,0,0.7)]" />
+
+            {/* Stacked Page Edge Block Illusion on the right side */}
+            <div className="absolute top-2 right-[-14px] bottom-2 w-3.5 bg-gradient-to-r from-[#e3d7bf] to-[#c7b99c] rounded-r-xs shadow-md border-y border-black/30 flex flex-col justify-between py-1 opacity-90">
+              <div className="w-full h-[1px] bg-black/20" />
+              <div className="w-full h-[1px] bg-black/20" />
+              <div className="w-full h-[1px] bg-black/20" />
+              <div className="w-full h-[1px] bg-black/20" />
+            </div>
+
+            {/* Gilt / Embossed Border Framing */}
+            <div className="absolute inset-5 border border-amber-400/35 rounded-r-xl rounded-l-xs pointer-events-none flex flex-col justify-between p-1.5">
+              <div className="flex justify-between">
+                <div className="w-4 h-4 border-t-2 border-l-2 border-amber-400/60" />
+                <div className="w-4 h-4 border-t-2 border-r-2 border-amber-400/60" />
+              </div>
+              <div className="flex justify-between">
+                <div className="w-4 h-4 border-b-2 border-l-2 border-amber-400/60" />
+                <div className="w-4 h-4 border-b-2 border-r-2 border-amber-400/60" />
+              </div>
+            </div>
+
+            {/* Ribbon tail peeking out from the bottom edge */}
+            <div
+              className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-6 h-18 shadow-xl rounded-b-sm"
+              style={{ backgroundColor: book.ribbonColor }}
+            />
+
+            {/* Top Cover Tooling Header */}
+            <div className="text-center pt-8 z-10">
+              <div className="text-[11px] uppercase tracking-widest text-amber-300/60 font-serif">
+                Handcrafted Physical Edition
+              </div>
+            </div>
+
+            {/* Embossed Title & Subtitle */}
+            <div className="text-center my-auto z-10 px-4">
+              <h1 className={`text-2xl sm:text-3xl font-bold font-serif tracking-wider leading-snug ${getFoilStyle(book.embossingColor)}`}>
+                {book.title}
+              </h1>
+              {book.subtitle && (
+                <p className="text-sm italic text-amber-200/80 font-serif mt-3 tracking-wide">
+                  {book.subtitle}
+                </p>
+              )}
+              <div className="w-16 h-[1px] bg-amber-400/40 mx-auto mt-6" />
+            </div>
+
+            {/* Bottom Colophon Marker & Open Callout */}
+            <div className="text-center pb-4 z-10">
+              <button
+                onClick={handleOpenBook}
+                className="px-5 py-2 bg-black/40 hover:bg-black/60 border border-amber-500/40 rounded-full text-xs text-amber-200 font-serif flex items-center gap-2 mx-auto shadow-lg cursor-pointer transition-all hover:scale-105"
+              >
+                <BookOpen className="w-4 h-4 text-amber-400" />
+                <span>Open Hardcover Book</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ======================================================== */
+        /* 2. OPEN TWO-PAGE SPREAD STATE */
+        /* ======================================================== */
+        <div className="relative flex flex-col items-center py-2">
+          
+          {/* Main Book Structure with Deckled Stacked Edge Depth */}
+          <div className="relative flex items-center shadow-[0_45px_90px_rgba(0,0,0,0.85),0_15px_30px_rgba(0,0,0,0.6)] rounded-sm">
+            
+            {/* Left Stacked Paper Thickness (Deckled Edges) */}
+            <div className="w-3.5 h-[640px] bg-gradient-to-r from-[#bfae8f] via-[#d5c7ab] to-[#ece1cc] rounded-l-xs shadow-inner border-y border-black/30 hidden sm:flex flex-col justify-between py-2">
+              {Array.from({ length: 16 }).map((_, i) => (
+                <div key={i} className="w-full h-[1px] bg-black/15" />
+              ))}
+            </div>
+
+            {/* StPageFlip Interactive Book Shell */}
+            <div className="relative overflow-visible">
+              
+              {/* Spine Valley Center Shadow Gradient Overlay */}
+              <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-14 pointer-events-none z-20 bg-gradient-to-r from-transparent via-black/40 to-transparent" />
+
+              {/* Central Spine Binding Stitch Illusion */}
+              <div className="absolute top-0 bottom-0 left-1/2 transform -translate-x-1/2 w-[2px] bg-black/60 pointer-events-none z-25" />
+
+              {/* Physical Satin Ribbon Bookmark Component */}
+              <RibbonBookmark
+                bookmarks={book.bookmarks}
+                currentPage={activePageIndex}
+                bookWidth={PAGE_WIDTH * 2}
+                bookHeight={PAGE_HEIGHT}
+                onAddBookmark={(page, label, color) => {
+                  const newBm = {
+                    id: `bm-${Date.now()}`,
+                    pageNumber: page,
+                    positionY: 0.25,
+                    color: color || book.ribbonColor,
+                    label: label || `Page ${page}`,
+                    createdAt: Date.now()
+                  };
+                  onUpdateBook({ bookmarks: [...book.bookmarks, newBm] });
+                }}
+                onRemoveBookmark={id => {
+                  onUpdateBook({ bookmarks: book.bookmarks.filter(b => b.id !== id) });
+                }}
+                onJumpToPage={page => {
+                  setActivePageIndex(page);
+                  onPageChange?.(page);
+                  onUpdateBook({ currentPage: page });
+                }}
+              />
+
+              {/* Page Container: Dual Page Spread */}
+              <div
+                ref={containerRef}
+                className="flex items-center bg-[#18110b] rounded-sm select-none"
+                style={{ width: `${PAGE_WIDTH * 2}px`, height: `${PAGE_HEIGHT}px` }}
+              >
+                {(() => {
+                  const pagesToRender = [...book.pages];
+                  if (pagesToRender.length < 2) {
+                    pagesToRender.push({ pageNumber: 2, strokes: [], rawText: '' });
+                  }
+                  if (pagesToRender.length % 2 !== 0) {
+                    pagesToRender.push({ pageNumber: pagesToRender.length + 1, strokes: [], rawText: '' });
+                  }
+
+                  return pagesToRender.map((p, idx) => {
+                    const isRight = idx % 2 !== 0;
+                    const isCurrentWritingTarget = p.pageNumber === activeTargetPage.pageNumber;
+
+                    return (
+                      <div
+                        key={p.pageNumber}
+                        className="book-flip-page relative w-[480px] h-[640px] bg-[#fbf9f5] overflow-hidden"
+                      >
+                        <BookPageCanvas
+                          page={p}
+                          pageNumber={p.pageNumber}
+                          width={PAGE_WIDTH}
+                          height={PAGE_HEIGHT}
+                          paperType={book.paperType}
+                          rulingStyle={book.rulingStyle}
+                          isRightPage={isRight}
+                          isActiveWritingPage={isCurrentWritingTarget}
+                          caretPosition={isCurrentWritingTarget ? activeLayout.caretPosition : undefined}
+                          animatingStrokeId={isCurrentWritingTarget ? animatingStrokeId : undefined}
+                          animatingProgress={isCurrentWritingTarget ? animatingProgress : 1.0}
+                          onClickPage={() => handlePageClick(isRight ? 'right' : 'left')}
+                        />
+                        {/* Page Turn Corner Zone (Click or Drag to Turn) */}
+                        <div
+                          onClick={isRight ? handleNextPage : handlePrevPage}
+                          className={`absolute bottom-0 ${isRight ? 'right-0' : 'left-0'} w-16 h-16 cursor-pointer z-30 group`}
+                          title={isRight ? 'Turn to next page' : 'Turn to previous page'}
+                        >
+                          <div
+                            className={`absolute bottom-0 ${isRight ? 'right-0' : 'left-0'} w-0 h-0 border-b-[24px] border-b-black/15 ${
+                              isRight ? 'border-l-[24px] border-l-transparent' : 'border-r-[24px] border-r-transparent'
+                            } transition-all group-hover:border-b-[36px] ${
+                              isRight ? 'group-hover:border-l-[36px]' : 'group-hover:border-r-[36px]'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+            </div>
+
+            {/* Right Stacked Paper Thickness (Deckled Edges) */}
+            <div className="w-3.5 h-[640px] bg-gradient-to-r from-[#ece1cc] via-[#d5c7ab] to-[#bfae8f] rounded-r-xs shadow-inner border-y border-black/30 hidden sm:flex flex-col justify-between py-2">
+              {Array.from({ length: 16 }).map((_, i) => (
+                <div key={i} className="w-full h-[1px] bg-black/15" />
+              ))}
+            </div>
+          </div>
+
+          {/* ======================================================== */}
+          {/* Ambient Navigation & Writing Status Floating Bar */}
+          {/* ======================================================== */}
+          <div className="flex items-center justify-between w-full max-w-[960px] mt-4 px-4 py-2 bg-[#1c120c]/80 border border-amber-900/50 rounded-2xl shadow-xl backdrop-blur-md text-amber-200 text-xs font-serif">
+            
+            {/* Left Nav Button */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrevPage}
+                className="p-1.5 rounded-lg bg-black/30 hover:bg-black/60 border border-amber-900/40 text-amber-300 cursor-pointer transition-all flex items-center gap-1"
+                title="Previous Spread (Alt + Left Arrow)"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Previous</span>
+              </button>
+              <button
+                onClick={handleCloseBook}
+                className="p-1.5 rounded-lg bg-black/30 hover:bg-black/60 border border-amber-900/40 text-amber-400 cursor-pointer transition-all flex items-center gap-1"
+                title="Close Book"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Close</span>
+              </button>
+            </div>
+
+            {/* Center Spread / Author Indicator */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-950/40 border border-amber-800/40 rounded-full">
+                <span className="text-amber-400 font-bold">{leftPageNumber}</span>
+                <span className="text-amber-600/60">—</span>
+                <span className="text-amber-400 font-bold">{rightPageNumber}</span>
+                <span className="text-[10px] text-amber-500/50 ml-1">of {book.pages.length}</span>
+              </div>
+
+              <div className="hidden md:flex items-center gap-1.5 text-amber-300/80">
+                <span className="text-xs">{activeCharacter.flag}</span>
+                <span className="text-xs font-medium">{activeCharacter.name}</span>
+                <span className="text-[10px] text-amber-500/60">({activeWritingSide === 'left' ? 'Page L' : 'Page R'})</span>
+              </div>
+            </div>
+
+            {/* Right Nav & Undo/Redo Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleUndo}
+                disabled={undoStack.length === 0}
+                className="p-1.5 rounded-lg bg-black/30 hover:bg-black/60 border border-amber-900/40 disabled:opacity-30 text-amber-300 cursor-pointer transition-all"
+                title="Undo (Ctrl+Z)"
+              >
+                <Undo className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={redoStack.length === 0}
+                className="p-1.5 rounded-lg bg-black/30 hover:bg-black/60 border border-amber-900/40 disabled:opacity-30 text-amber-300 cursor-pointer transition-all"
+                title="Redo (Ctrl+Y)"
+              >
+                <Redo className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleNextPage}
+                className="p-1.5 rounded-lg bg-black/30 hover:bg-black/60 border border-amber-900/40 text-amber-300 cursor-pointer transition-all flex items-center gap-1"
+                title="Next Spread (Alt + Right Arrow)"
+              >
+                <span className="hidden sm:inline">Next</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+};
