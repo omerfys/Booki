@@ -7,7 +7,7 @@ import { LeftDeskPenStand, RightDeskPenStand } from './components/DeskPenStand';
 import { CharacterModal } from './components/CharacterModal';
 import { BookCustomizerModal } from './components/BookCustomizerModal';
 import { LibraryModal } from './components/LibraryModal';
-import { Library, Palette, Users, Maximize2, Minimize2, CheckCircle2, BookOpen, Volume2, VolumeX } from 'lucide-react';
+import { Library, Palette, Users, Maximize2, Minimize2, BookOpen, Volume2, VolumeX } from 'lucide-react';
 import { sound } from './engine/audio/soundEngine';
 
 export default function App() {
@@ -273,12 +273,6 @@ export default function App() {
 
         {/* Right: Bindery Customizer & Status Badges */}
         <div className="flex items-center gap-3">
-          {/* Autosaved Indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-amber-400/60 bg-black/30 px-2.5 py-1 rounded-full border border-amber-950">
-            <CheckCircle2 className={`w-3.5 h-3.5 ${isSaving ? 'text-amber-500 animate-spin' : 'text-emerald-400'}`} />
-            <span>{isSaving ? 'Inking...' : 'Autosaved'}</span>
-          </div>
-
           {/* Book Bindery Customizer */}
           <button
             onClick={() => setIsCustomizerOpen(true)}
