@@ -5,7 +5,7 @@ import { BookPageCanvas } from './BookPageCanvas';
 import { RibbonBookmark } from './RibbonBookmark';
 import { generatePageStrokes, PageLayoutConstraints } from '../engine/handwriting/strokeGenerator';
 import { StrokeAnimator } from '../engine/handwriting/strokeAnimator';
-import { ChevronLeft, ChevronRight, BookOpen, Lock, Undo, Redo } from 'lucide-react';
+import { BookOpen, Lock, Undo, Redo } from 'lucide-react';
 import { sound } from '../engine/audio/soundEngine';
 
 interface BookEngineProps {
@@ -837,23 +837,15 @@ export const BookEngine: React.FC<BookEngineProps> = ({
           {/* ======================================================== */}
           <div className="flex items-center justify-between w-full max-w-[960px] mt-4 px-4 py-2 bg-[#1c120c]/80 border border-amber-900/50 rounded-2xl shadow-xl backdrop-blur-md text-amber-200 text-xs font-serif">
             
-            {/* Left Nav Button */}
+            {/* Left Action Button: Close Book */}
             <div className="flex items-center gap-2">
               <button
-                onClick={handlePrevPage}
-                className="p-1.5 rounded-lg bg-black/30 hover:bg-black/60 border border-amber-900/40 text-amber-300 cursor-pointer transition-all flex items-center gap-1"
-                title="Previous Spread (Alt + Left Arrow)"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <span className="hidden sm:inline">Previous</span>
-              </button>
-              <button
                 onClick={handleCloseBook}
-                className="p-1.5 rounded-lg bg-black/30 hover:bg-black/60 border border-amber-900/40 text-amber-400 cursor-pointer transition-all flex items-center gap-1"
+                className="p-1.5 rounded-lg bg-black/30 hover:bg-black/60 border border-amber-900/40 text-amber-400 cursor-pointer transition-all flex items-center gap-1.5"
                 title="Close Book"
               >
                 <Lock className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Close</span>
+                <span className="text-xs">Close</span>
               </button>
             </div>
 
@@ -873,7 +865,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
               </div>
             </div>
 
-            {/* Right Nav & Undo/Redo Buttons */}
+            {/* Right Action Buttons: Undo & Redo */}
             <div className="flex items-center gap-2">
               <button
                 onClick={handleUndo}
@@ -891,16 +883,7 @@ export const BookEngine: React.FC<BookEngineProps> = ({
               >
                 <Redo className="w-3.5 h-3.5" />
               </button>
-              <button
-                onClick={handleNextPage}
-                className="p-1.5 rounded-lg bg-black/30 hover:bg-black/60 border border-amber-900/40 text-amber-300 cursor-pointer transition-all flex items-center gap-1"
-                title="Next Spread (Alt + Right Arrow)"
-              >
-                <span className="hidden sm:inline">Next</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
             </div>
-
           </div>
 
         </div>
